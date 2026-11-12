@@ -10,7 +10,7 @@ const PAGES = {
   clean: {
     title: "Clean",
     ambient: "#1b2940",
-    caption: "Twenty-one known locations, sized and grouped, with nothing selected until you review it.",
+    caption: "21 known locations, sized and grouped, with nothing selected until you review it.",
     alt: "The WinSweep Clean page listing disposable caches with their sizes and a note that nothing is selected yet."
   },
   apps: {
@@ -40,6 +40,7 @@ const PAGES = {
 };
 
 const screen = document.getElementById("screen");
+const panel = document.getElementById("screen-panel");
 const image = document.getElementById("screen-image");
 const title = document.getElementById("screen-title");
 const caption = document.getElementById("screen-caption");
@@ -52,13 +53,32 @@ Object.keys(PAGES).forEach((key) => {
   preload.src = `assets/screenshots/${key}.png`;
 });
 
-function showPage(key) {
+// The selected tab is the only one in the tab order; the arrow keys move within.
+function select(tab, group) {
+  group.forEach((other) => {
+    const active = other === tab;
+    other.setAttribute("aria-selected", String(active));
+    other.tabIndex = active ? 0 : -1;
+  });
+}
+
+function store(key, value) {
+  const url = new URL(window.location.href);
+  url.searchParams.set(key, value);
+  window.history.replaceState(null, "", url);
+}
+
+function showPage(key, updateUrl = true) {
   const page = PAGES[key];
   if (!page) return;
 
-  tabs.forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.page === key)));
+  const tab = tabs.find((entry) => entry.dataset.page === key);
+  if (!tab) return;
+
+  select(tab, tabs);
   screen.dataset.page = key;
   screen.style.setProperty("--ambient", page.ambient);
+  panel.setAttribute("aria-labelledby", tab.id);
 
   const commit = () => {
     image.src = `assets/screenshots/${key}.png`;
@@ -74,23 +94,33 @@ function showPage(key) {
   } else {
     commit();
   }
+
+  if (updateUrl) store("page", key);
 }
 
-tabs.forEach((tab, index) => {
-  tab.addEventListener("click", () => showPage(tab.dataset.page));
+function wireTablist(group, onSelect) {
+  group.forEach((tab, index) => {
+    tab.addEventListener("click", () => onSelect(tab));
 
-  // Arrow keys move between pages, as a tab list is expected to.
-  tab.addEventListener("keydown", (event) => {
-    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (!step) return;
-    event.preventDefault();
-    const next = tabs[(index + step + tabs.length) % tabs.length];
-    next.focus();
-    showPage(next.dataset.page);
+    tab.addEventListener("keydown", (event) => {
+      const keys = {
+        ArrowRight: (index + 1) % group.length,
+        ArrowLeft: (index - 1 + group.length) % group.length,
+        Home: 0,
+        End: group.length - 1
+      };
+      const next = keys[event.key];
+      if (next === undefined) return;
+
+      event.preventDefault();
+      const target = group[next];
+      target.focus();
+      onSelect(target);
+    });
   });
-});
+}
 
-screen.style.setProperty("--ambient", PAGES.status.ambient);
+wireTablist(tabs, (tab) => showPage(tab.dataset.page));
 
 // Cleanup categories, transcribed from WinSweep.Core/Cleanup/CleanupCatalog.cs.
 const CLEANUP_RULES = {
@@ -124,9 +154,12 @@ const CLEANUP_RULES = {
 const ruleList = document.getElementById("rule-list");
 const categoryButtons = Array.from(document.querySelectorAll(".segmented button"));
 
-function renderRules(category) {
-  const rules = CLEANUP_RULES[category];
+function renderCategory(button, updateUrl = true) {
+  const rules = CLEANUP_RULES[button.dataset.category];
   if (!rules || !ruleList) return;
+
+  select(button, categoryButtons);
+  ruleList.setAttribute("aria-labelledby", button.id);
 
   ruleList.replaceChildren(
     ...rules.map((rule) => {
@@ -150,18 +183,26 @@ function renderRules(category) {
       return row;
     })
   );
+
+  if (updateUrl) store("category", button.dataset.category.toLowerCase().replace(/\s+/g, "-"));
 }
 
-categoryButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    categoryButtons.forEach((other) =>
-      other.setAttribute("aria-selected", String(other === button))
-    );
-    renderRules(button.dataset.category);
-  });
-});
+wireTablist(categoryButtons, (button) => renderCategory(button));
 
-renderRules("System");
+// Restore whatever the link asked for, so a shared URL opens on the same page.
+const params = new URLSearchParams(window.location.search);
+const wantedPage = params.get("page");
+if (wantedPage && PAGES[wantedPage]) {
+  showPage(wantedPage, false);
+} else {
+  screen.style.setProperty("--ambient", PAGES.status.ambient);
+}
+
+const wantedCategory = params.get("category");
+const initialCategory = categoryButtons.find(
+  (button) => button.dataset.category.toLowerCase().replace(/\s+/g, "-") === wantedCategory
+);
+renderCategory(initialCategory ?? categoryButtons[0], false);
 
 // Copy the build commands from the download card.
 const copyButton = document.querySelector(".copy");

@@ -19,6 +19,8 @@
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --display: "Segoe UI Variable Display", "Segoe UI Semibold", "Segoe UI", system-ui, sans-serif;
   --mono: "Cascadia Code", "Cascadia Mono", ui-monospace, Consolas, monospace;
+
+  color-scheme: dark;
 }
 
 *,
@@ -26,6 +28,10 @@
 *::after { box-sizing: border-box; }
 
 html { scroll-behavior: smooth; }
+
+/* The header is sticky, so an anchored heading must not land underneath it. */
+section[id],
+main[id] { scroll-margin-top: 78px; }
 
 body {
   margin: 0;
@@ -41,13 +47,36 @@ img { display: block; max-width: 100%; height: auto; }
 
 a { color: inherit; }
 
-h1, h2, h3 { margin: 0; font-family: var(--display); font-weight: 600; line-height: 1.14; letter-spacing: -0.018em; }
+h1, h2, h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 600;
+  line-height: 1.14;
+  letter-spacing: -0.018em;
+  text-wrap: balance;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 h1 { font-size: clamp(2.15rem, 3.9vw, 3.05rem); letter-spacing: -0.024em; }
 h2 { font-size: clamp(1.55rem, 2.6vw, 2.1rem); }
 h3 { font-size: 1.02rem; }
 
 p { margin: 0; }
 em { font-style: normal; }
+
+.lede,
+.opening-lede,
+.section-top p { text-wrap: pretty; }
 
 code {
   font-family: var(--mono);
@@ -75,6 +104,18 @@ code {
   outline: 2px solid var(--mint);
   outline-offset: 3px;
   border-radius: 4px;
+}
+
+/* Every control answers on touch without a double-tap delay, and the tap
+   highlight is the page's own mint rather than a browser default. */
+.button,
+.repo-link,
+.wordmark,
+.copy,
+.screen-tabs button,
+.segmented button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(184, 214, 201, 0.16);
 }
 
 /* ---------- Top bar ---------- */
@@ -319,6 +360,7 @@ code {
   color: var(--muted);
   text-align: right;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .ledger .rule-meta .admin { color: var(--amber); }
 
@@ -370,6 +412,7 @@ code {
   padding: 0.14rem 0.5rem;
   border-radius: 4px;
   flex: none;
+  font-variant-numeric: tabular-nums;
 }
 .verdict-hold { background: rgba(224, 168, 98, 0.13); color: var(--amber); }
 .verdict-take { background: rgba(131, 185, 160, 0.15); color: var(--mint); }
@@ -466,11 +509,21 @@ code {
   border-bottom: 1px solid rgba(29, 34, 37, 0.14);
 }
 .download-specs div { display: grid; gap: 0.2rem; }
-.download-specs dt { font-size: 0.74rem; color: #6c706c; }
-.download-specs dd { margin: 0; font-size: 0.9rem; color: #232a2c; }
+.download-specs dt { font-size: 0.74rem; color: #555a56; }
+.download-specs dd { margin: 0; font-size: 0.9rem; color: #232a2c; font-variant-numeric: tabular-nums; }
 
 .download-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 0.85rem; }
-.download-status { font-size: 0.86rem; color: #5d615e; max-width: 58ch; }
+.download-status { font-size: 0.86rem; color: #555a56; max-width: 58ch; }
+.download-alt {
+  font-size: 0.86rem;
+  color: #232a2c;
+  text-decoration: underline;
+  text-decoration-color: rgba(29, 34, 37, 0.35);
+  text-underline-offset: 3px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(29, 34, 37, 0.12);
+}
+.download-alt:hover { text-decoration-color: currentColor; }
 
 .install { border-top: 1px solid rgba(29, 34, 37, 0.14); padding-top: 1.3rem; }
 .install-head {
@@ -479,7 +532,7 @@ code {
   justify-content: space-between;
   gap: 1rem;
   font-size: 0.8rem;
-  color: #6c706c;
+  color: #555a56;
 }
 .copy {
   font: inherit;
@@ -549,7 +602,27 @@ code {
 /* ---------- Responsive ---------- */
 
 @media (max-width: 940px) {
-  .bar-nav { display: none; }
+  /* Keep the section links reachable instead of hiding them: the bar wraps and the
+     nav becomes one scrollable row under the wordmark. */
+  .bar-inner {
+    flex-wrap: wrap;
+    min-height: 0;
+    padding-block: 0.6rem;
+    gap: 0.45rem 1rem;
+  }
+  .bar-nav {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+    padding-bottom: 0.15rem;
+    scrollbar-width: none;
+  }
+  .bar-nav::-webkit-scrollbar { display: none; }
+  .bar-nav a { white-space: nowrap; }
+  .repo-link { margin-left: auto; }
+  section[id],
+  main[id] { scroll-margin-top: 124px; }
   .two-col,
   .two-col-tight { grid-template-columns: minmax(0, 1fr); gap: 2.2rem; }
   .sequence { grid-template-columns: minmax(0, 1fr); }

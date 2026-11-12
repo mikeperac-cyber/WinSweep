@@ -86,8 +86,23 @@ await send("Emulation.setDeviceMetricsOverride", {
 await send("Page.navigate", { url });
 await new Promise((resolve) => setTimeout(resolve, settle));
 
-// Make sure fonts and images are in before measuring the page.
+// Make sure fonts are in, then walk the page once so images marked loading="lazy"
+// actually decode. Without this pass a below-the-fold image captures as an empty box.
 await send("Runtime.evaluate", { expression: "document.fonts.ready", awaitPromise: true });
+await send("Runtime.evaluate", {
+  expression: `(async () => {
+    const step = window.innerHeight * 0.8;
+    for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
+      window.scrollTo(0, y);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+    window.scrollTo(0, 0);
+    await Promise.all([...document.images].map((image) => image.decode().catch(() => {})));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return document.images.length;
+  })()`,
+  awaitPromise: true
+});
 await new Promise((resolve) => setTimeout(resolve, 250));
 
 const metrics = await send("Page.getLayoutMetrics");

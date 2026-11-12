@@ -3,8 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#191d20" />
 <title>WinSweep: a Windows cleaner that shows you the list first</title>
 <meta name="description" content="WinSweep finds disposable caches, uninstalls applications with their leftovers reviewed, clears rebuildable project output and maps disk usage. Native WinUI 3, open source, for Windows." />
+<link rel="preload" as="image" href="assets/screenshots/status.png" fetchpriority="high" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -13,7 +16,7 @@
 
 <header class="bar">
   <div class="wrap bar-inner">
-    <a class="wordmark" href="#top" aria-label="WinSweep, back to top">
+    <a class="wordmark" href="#top" aria-label="WinSweep, back to top" translate="no">
       <span class="mark" aria-hidden="true">
         <svg viewBox="0 0 20 20" width="18" height="18">
           <line x1="13" y1="2" x2="8" y2="12" stroke="#C8DDD2" stroke-width="2.2" stroke-linecap="round" />
@@ -42,7 +45,7 @@
 
 <main id="top">
 
-  <section class="opening">
+  <section class="opening" aria-labelledby="opening-title">
     <div class="wrap">
       <a class="app-icon" href="https://github.com/mikeperac-cyber/WinSweep" aria-label="WinSweep source on GitHub">
         <svg viewBox="0 0 20 20" width="44" height="44" aria-hidden="true">
@@ -51,7 +54,7 @@
         </svg>
       </a>
 
-      <h1>Nothing leaves your PC before you have looked at the list.</h1>
+      <h1 id="opening-title">Nothing Leaves Your PC Before You See the List</h1>
 
       <p class="opening-lede">
         WinSweep measures the files that pile up without being yours, caches, crash dumps,
@@ -60,26 +63,28 @@
       </p>
 
       <dl class="ledger-line">
-        <div><dt>Written in</dt><dd>C# on WinUI 3, .NET 8</dd></div>
-        <div><dt>Runs on</dt><dd>Windows 10 1809 or newer, x64</dd></div>
+        <div><dt>Written in</dt><dd>C# on WinUI&nbsp;3, .NET&nbsp;8</dd></div>
+        <div><dt>Runs on</dt><dd>Windows&nbsp;10 1809 or newer, x64</dd></div>
         <div><dt>Licence</dt><dd>Open source on GitHub</dd></div>
       </dl>
 
       <p class="opening-actions">
-        <a class="button button-solid" href="#walkthrough">Walk through the app</a>
-        <a class="button button-line" href="#download">Get it for Windows</a>
+        <a class="button button-solid" href="#walkthrough">Walk Through the App</a>
+        <a class="button button-line" href="#download">Get It for Windows</a>
       </p>
     </div>
   </section>
 
   <!-- Walkthrough: the app's own window, six pages -->
-  <section class="walkthrough" id="walkthrough">
+  <section class="walkthrough" id="walkthrough" aria-labelledby="walkthrough-title">
+    <h2 class="sr-only" id="walkthrough-title">Walkthrough of the app</h2>
     <div class="wrap">
       <div class="screen" id="screen" data-page="status">
-        <figure class="screen-body">
+        <figure class="screen-body" id="screen-panel" role="tabpanel" aria-labelledby="screen-tab-status">
           <img id="screen-image" src="assets/screenshots/status.png" width="1280" height="820"
+               fetchpriority="high" decoding="async"
                alt="The WinSweep Status page: a health score ring, tiles for processor, memory, storage and battery, drive bars and the busiest processes." />
-          <figcaption id="screen-caption">
+          <figcaption id="screen-caption" aria-live="polite">
             A read-only snapshot: a health score from processor and memory pressure plus free space on the system drive.
           </figcaption>
         </figure>
@@ -87,12 +92,12 @@
         <div class="screen-bar">
           <span class="screen-title" id="screen-title">Status</span>
           <div class="screen-tabs" role="tablist" aria-label="Application pages">
-            <button role="tab" data-page="status" aria-selected="true">Status</button>
-            <button role="tab" data-page="clean" aria-selected="false">Clean</button>
-            <button role="tab" data-page="apps" aria-selected="false">Apps</button>
-            <button role="tab" data-page="projects" aria-selected="false">Projects</button>
-            <button role="tab" data-page="optimize" aria-selected="false">Optimize</button>
-            <button role="tab" data-page="analyze" aria-selected="false">Analyze</button>
+            <button role="tab" id="screen-tab-status" data-page="status" aria-selected="true" aria-controls="screen-panel" tabindex="0">Status</button>
+            <button role="tab" id="screen-tab-clean" data-page="clean" aria-selected="false" aria-controls="screen-panel" tabindex="-1">Clean</button>
+            <button role="tab" id="screen-tab-apps" data-page="apps" aria-selected="false" aria-controls="screen-panel" tabindex="-1">Apps</button>
+            <button role="tab" id="screen-tab-projects" data-page="projects" aria-selected="false" aria-controls="screen-panel" tabindex="-1">Projects</button>
+            <button role="tab" id="screen-tab-optimize" data-page="optimize" aria-selected="false" aria-controls="screen-panel" tabindex="-1">Optimize</button>
+            <button role="tab" id="screen-tab-analyze" data-page="analyze" aria-selected="false" aria-controls="screen-panel" tabindex="-1">Analyze</button>
           </div>
         </div>
       </div>
@@ -105,30 +110,30 @@
   </section>
 
   <!-- Clean -->
-  <section class="section" id="clean">
+  <section class="section" id="clean" aria-labelledby="clean-title">
     <div class="wrap two-col">
       <div>
-        <h2>Every cache rule carries its own reason</h2>
+        <h2 id="clean-title">Every Cache Rule Carries Its Own Reason</h2>
         <p class="lede">
-          Twenty-one known locations, from the user temp folder to the NuGet package cache. Each
-          rule states why its contents are disposable, how old a file has to be, and which running
+          21 known locations, from the user temp folder to the NuGet package cache. Each rule
+          states why its contents are disposable, how old a file has to be, and which running
           program makes the location off limits. Old enough, nothing running, nothing personal:
           only then is it ticked for you.
         </p>
 
         <div class="segmented" role="tablist" aria-label="Cleanup categories">
-          <button role="tab" data-category="System" aria-selected="true">System</button>
-          <button role="tab" data-category="Browsers" aria-selected="false">Browsers</button>
-          <button role="tab" data-category="Graphics" aria-selected="false">Graphics</button>
-          <button role="tab" data-category="Developer tools" aria-selected="false">Developer tools</button>
+          <button role="tab" id="category-tab-system" data-category="System" aria-selected="true" aria-controls="rule-list" tabindex="0">System</button>
+          <button role="tab" id="category-tab-browsers" data-category="Browsers" aria-selected="false" aria-controls="rule-list" tabindex="-1">Browsers</button>
+          <button role="tab" id="category-tab-graphics" data-category="Graphics" aria-selected="false" aria-controls="rule-list" tabindex="-1">Graphics</button>
+          <button role="tab" id="category-tab-developers" data-category="Developer tools" aria-selected="false" aria-controls="rule-list" tabindex="-1">Developer tools</button>
         </div>
 
-        <ul class="ledger" id="rule-list">
+        <ul class="ledger" id="rule-list" role="tabpanel" aria-labelledby="category-tab-system" aria-live="polite">
           <!-- filled from the cleanup catalog by app.js -->
         </ul>
       </div>
 
-      <aside class="aside-note">
+      <aside class="aside-note" aria-label="Notes about the cleanup rules">
         <p>A browser cache is listed but never selected while that browser is open, so a session in progress is left alone.</p>
         <p>Cleaning the Windows temp folder needs an administrator account, so it stays off by default and asks first.</p>
         <p>Every removal is one line in a local log: what it was, where it lived, how large, and what happened.</p>
@@ -137,20 +142,22 @@
   </section>
 
   <!-- Projects -->
-  <section class="section section-plain" id="projects">
+  <section class="section section-plain" id="projects" aria-labelledby="projects-title">
     <div class="wrap">
       <div class="section-top">
-        <h2>Build output, only where you point it</h2>
+        <h2 id="projects-title">Build Output, Only Where You Point It</h2>
         <p class="lede">
-          WinSweep looks for recognised output such as <code>node_modules</code>, <code>target</code>,
-          <code>.next</code>, <code>.venv</code> and <code>obj</code>, and only inside folders that
-          carry a real project marker. Documents, Downloads, OneDrive and the rest of your profile
-          are not scanned unless you choose them.
+          WinSweep looks for recognised output such as <code translate="no">node_modules</code>,
+          <code translate="no">target</code>, <code translate="no">.next</code>,
+          <code translate="no">.venv</code> and <code translate="no">obj</code>, and only inside
+          folders that carry a real project marker. Documents, Downloads, OneDrive and the rest of
+          your profile are not scanned unless you choose them.
         </p>
       </div>
 
       <figure class="wide-shot">
         <img src="assets/screenshots/projects.png" width="1280" height="820"
+             loading="lazy" decoding="async"
              alt="The Project artifacts page: six candidates measured at 826.8 MB, each labelled as changed within the last seven days and therefore kept." />
         <figcaption>
           A scan of this project found six candidates and selected none. All six had changed within
@@ -161,7 +168,7 @@
       <ul class="verdicts">
         <li><span class="verdict verdict-hold">kept</span> Changed in the last seven days</li>
         <li><span class="verdict verdict-hold">kept</span> Contains files tracked by Git</li>
-        <li><span class="verdict verdict-hold">kept</span> Holds a key, a credential or an <code>.env</code></li>
+        <li><span class="verdict verdict-hold">kept</span> Holds a key, a credential or an <code translate="no">.env</code></li>
         <li><span class="verdict verdict-hold">kept</span> Could not be read in full</li>
         <li><span class="verdict verdict-take">offered</span> Old, complete, untracked, and rechecked at the Recycle Bin</li>
       </ul>
@@ -169,30 +176,30 @@
   </section>
 
   <!-- Apps -->
-  <section class="section" id="apps">
+  <section class="section" id="apps" aria-labelledby="apps-title">
     <div class="wrap">
-      <h2>Uninstalling, finished properly</h2>
+      <h2 id="apps-title">Uninstalling, Finished Properly</h2>
       <p class="lede">
-        The vendor's uninstaller still does the work. What WinSweep adds is the part most
+        The vendor’s uninstaller still does the work. What WinSweep adds is the part most
         uninstallers skip: the folders left behind, offered by exact name and reviewed rather
         than swept.
       </p>
 
       <ol class="sequence">
         <li>
-          <h3>The application uninstalls itself</h3>
+          <h3>The Application Uninstalls Itself</h3>
           <p>The registered uninstaller runs and decides what it removes. WinSweep reports its exit code rather than a claim.</p>
         </li>
         <li>
-          <h3>Leftovers are matched by exact name</h3>
-          <p>A folder has to carry the application's own name or its install folder name. There is no vendor prefix rule and no wildcard.</p>
+          <h3>Leftovers Are Matched by Exact Name</h3>
+          <p>A folder has to carry the application’s own name or its install folder name. There is no vendor prefix rule and no wildcard.</p>
         </li>
         <li>
-          <h3>Settings stay unticked</h3>
+          <h3>Settings Stay Unticked</h3>
           <p>Roaming profile data and Microsoft Store app data can hold saved work, so they are listed with what they may contain and left unchecked.</p>
         </li>
         <li>
-          <h3>What goes, goes to the Recycle Bin</h3>
+          <h3>What Goes, Goes to the Recycle Bin</h3>
           <p>Every folder moves through the Windows shell, which is what makes a mistake recoverable instead of permanent.</p>
         </li>
       </ol>
@@ -200,10 +207,10 @@
   </section>
 
   <!-- Safety -->
-  <section class="section section-safety" id="safety">
+  <section class="section section-safety" id="safety" aria-labelledby="safety-title">
     <div class="wrap">
       <div class="section-top">
-        <h2>The rules the code enforces</h2>
+        <h2 id="safety-title">The Rules the Code Enforces</h2>
         <p class="lede">
           One guard decides every removal. It refuses drive roots, system folders, the profile root,
           and anything reached through a junction or symbolic link. What follows is behaviour taken
@@ -212,24 +219,24 @@
       </div>
 
       <ul class="evidence">
-        <li><span>Reviewed before removed</span><em>a scan produces a list, never a deletion</em></li>
-        <li><span>Recoverable by default</span><em>Recycle Bin through the shell, undo intact</em></li>
-        <li><span>Unknown stays unknown</span><em>an unreadable folder reports a lower bound, never zero</em></li>
-        <li><span>A running app keeps its cache</span><em>Chrome, Edge and Firefox are protected while open</em></li>
-        <li><span>Recent files are left alone</span><em>every rule has a minimum age to pass</em></li>
-        <li><span>Personal data is never preselected</span><em>profiles, settings and Store app data stay unticked</em></li>
-        <li><span>Only exact names</span><em>no vendor-wide or wildcard matching</em></li>
-        <li><span>Every action is logged</span><em>one JSON line per action, appended locally</em></li>
-        <li><span>Maintenance is bounded</span><em>one known action, a stated effect, a hard timeout</em></li>
-        <li><span>Elevation is asked for</span><em>an administrator task never starts without one</em></li>
-        <li><span>Project roots are explicit</span><em>only folders you choose are scanned</em></li>
-        <li><span>Artifacts are verified twice</span><em>rechecked at the moment of removal</em></li>
+        <li><span>Reviewed Before Removed</span><em>a scan produces a list, never a deletion</em></li>
+        <li><span>Recoverable by Default</span><em>Recycle Bin through the shell, undo intact</em></li>
+        <li><span>Unknown Stays Unknown</span><em>an unreadable folder reports a lower bound, never zero</em></li>
+        <li><span>A Running App Keeps Its Cache</span><em>Chrome, Edge and Firefox are protected while open</em></li>
+        <li><span>Recent Files Are Left Alone</span><em>every rule has a minimum age to pass</em></li>
+        <li><span>Personal Data Is Never Preselected</span><em>profiles, settings and Store app data stay unticked</em></li>
+        <li><span>Only Exact Names</span><em>no vendor-wide or wildcard matching</em></li>
+        <li><span>Every Action Is Logged</span><em>one JSON line per action, appended locally</em></li>
+        <li><span>Maintenance Is Bounded</span><em>one known action, a stated effect, a hard timeout</em></li>
+        <li><span>Elevation Is Asked For</span><em>an administrator task never starts without one</em></li>
+        <li><span>Project Roots Are Explicit</span><em>only folders you choose are scanned</em></li>
+        <li><span>Artifacts Are Verified Twice</span><em>rechecked at the moment of removal</em></li>
       </ul>
     </div>
   </section>
 
   <!-- Download -->
-  <section class="section" id="download">
+  <section class="section" id="download" aria-labelledby="download-title">
     <div class="wrap">
       <div class="download-card">
         <div class="download-head">
@@ -239,41 +246,48 @@
             </svg>
           </span>
           <div>
-            <h2>WinSweep for Windows</h2>
-            <p class="download-sub">A desktop app, no account, no background service.</p>
+            <h2 id="download-title">WinSweep for Windows</h2>
+            <p class="download-sub">Version 0.1.0. A desktop app, no account, no background service.</p>
           </div>
         </div>
 
         <dl class="download-specs">
-          <div><dt>System</dt><dd>Windows 10 1809 or newer, x64</dd></div>
-          <div><dt>Runtime</dt><dd>Bundled .NET 8, nothing to install first</dd></div>
-          <div><dt>Package</dt><dd>About 226 MB, or an MSIX build</dd></div>
+          <div><dt>System</dt><dd>Windows&nbsp;10 1809 or newer, x64</dd></div>
+          <div><dt>Download</dt><dd>Self-contained zip, 237&nbsp;MB</dd></div>
+          <div><dt>MSIX</dt><dd>62&nbsp;MB package, needs its certificate trusted</dd></div>
         </dl>
 
         <div class="download-actions">
-          <a class="button button-ink" href="https://github.com/mikeperac-cyber/WinSweep/releases">
+          <a class="button button-ink" href="https://github.com/mikeperac-cyber/WinSweep/releases/download/v0.1.0/WinSweep-0.1.0-win-x64.zip">
             <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="currentColor">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+              <path d="M7 1h2v8.1l2.6-2.6 1.4 1.4L8 13 3 7.9l1.4-1.4L7 9.1V1Z"/>
+              <path d="M2 13h12v2H2z"/>
             </svg>
-            Open the releases page
+            Download for Windows
           </a>
+
+          <a class="download-alt" href="https://github.com/mikeperac-cyber/WinSweep/releases/download/v0.1.0/WinSweep.App_0.1.0.0_x64.msix">
+            Or download the MSIX package (62&nbsp;MB)
+          </a>
+
           <p class="download-status">
-            No packaged installer is published yet. Until one is, the app builds in a single command:
+            Version 0.1.0, zipped. Unzip it and run WinSweep.App.exe. Neither build is signed with a
+            publicly trusted certificate yet, so Windows shows a warning on the first run.
           </p>
         </div>
 
         <div class="install">
           <div class="install-head">
-            <span>Build it yourself</span>
-            <button class="copy" type="button" data-copy="git clone https://github.com/mikeperac-cyber/WinSweep.git&#10;cd WinSweep&#10;.\build.ps1 -Configuration Release -Publish" aria-label="Copy the build commands">
+            <span>Build it from source instead</span>
+            <button class="copy" type="button" data-copy="git clone https://github.com/mikeperac-cyber/WinSweep.git&#10;cd WinSweep&#10;.\build.ps1 -Configuration Release -Publish" aria-label="Copy the build commands" aria-live="polite">
               Copy
             </button>
           </div>
-<pre><code>git clone https://github.com/mikeperac-cyber/WinSweep.git
+<pre translate="no"><code>git clone https://github.com/mikeperac-cyber/WinSweep.git
 cd WinSweep
 .\build.ps1 -Configuration Release -Publish</code></pre>
           <p class="install-note">
-            Needs the .NET 8 SDK and Visual Studio 2022 or newer with the .NET desktop workload,
+            Needs the .NET&nbsp;8 SDK and Visual Studio 2022 or newer with the .NET desktop workload,
             because the WinUI XAML compiler runs as an MSBuild task.
           </p>
         </div>
@@ -282,10 +296,10 @@ cd WinSweep
   </section>
 
   <!-- Limits and internals -->
-  <section class="section" id="limits">
+  <section class="section" id="limits" aria-labelledby="limits-title">
     <div class="wrap two-col two-col-tight">
       <div>
-        <h2>What it does not do</h2>
+        <h2 id="limits-title">What It Does Not Do</h2>
         <ul class="plain-list">
           <li>No registry cleaner, no driver updater, no boost button.</li>
           <li>No background service, tray icon or schedule. It runs when you open it.</li>
@@ -296,9 +310,9 @@ cd WinSweep
       </div>
 
       <div>
-        <h2>How it is put together</h2>
+        <h2>How It Is Put Together</h2>
         <ul class="facts">
-          <li><span>Interface</span><em>WinUI 3 with MVVM, written in C#</em></li>
+          <li><span>Interface</span><em>WinUI&nbsp;3 with MVVM, written in C#</em></li>
           <li><span>Core</span><em>a separate library that owns the file system work</em></li>
           <li><span>Tests</span><em>xUnit over the safety-critical paths</em></li>
           <li><span>Record</span><em>append-only JSON log in the app data folder</em></li>
@@ -316,7 +330,7 @@ cd WinSweep
 
 <footer class="foot">
   <div class="wrap foot-inner">
-    <a class="wordmark" href="https://github.com/mikeperac-cyber/WinSweep">
+    <a class="wordmark" href="https://github.com/mikeperac-cyber/WinSweep" translate="no">
       <span class="mark" aria-hidden="true">
         <svg viewBox="0 0 20 20" width="18" height="18">
           <line x1="13" y1="2" x2="8" y2="12" stroke="#C8DDD2" stroke-width="2.2" stroke-linecap="round" />
