@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <RootNamespace>WinSweep.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <!--
+      Packaging is opt-in: build with -p:PackageAsMsix=true to produce an MSIX.
+      The default build stays unpackaged so the app can run straight from the
+      output folder without installing anything.
+
+      A packaged app uses the Windows App Runtime framework package that is
+      installed on the machine. An unpackaged app carries its own copy of the
+      runtime, which is why the two builds differ here.
+    -->
+    <PackageAsMsix Condition="'$(PackageAsMsix)' == ''">false</PackageAsMsix>
+    <WindowsPackageType Condition="'$(PackageAsMsix)' == 'true'">MSIX</WindowsPackageType>
+    <WindowsAppSDKSelfContained Condition="'$(PackageAsMsix)' == 'true'">false</WindowsAppSDKSelfContained>
+    <GenerateAppxPackageOnBuild Condition="'$(PackageAsMsix)' == 'true'">true</GenerateAppxPackageOnBuild>
+    <AppxPackageSigningEnabled Condition="'$(PackageAsMsix)' == 'true'">false</AppxPackageSigningEnabled>
+    <AppxBundle Condition="'$(PackageAsMsix)' == 'true'">Never</AppxBundle>
+    <AppxPackageDir Condition="'$(PackageAsMsix)' == 'true'">$(MSBuildProjectDirectory)\..\..\artifacts\msix\</AppxPackageDir>
+    <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+    <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
+    <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
+    <AppxPackageTestDir>$(AppxPackageDir)</AppxPackageTestDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PackageAsMsix)' == 'true'">
+    <Content Include="Assets\**" />
+    <AppxManifest Include="Package.appxmanifest" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinSweep.Core\WinSweep.Core.csproj" />
+  </ItemGroup>
+
+</Project>

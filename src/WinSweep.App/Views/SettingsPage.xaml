@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="WinSweep.App.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel Padding="28" Spacing="18">
+
+            <TextBlock Text="Settings" FontSize="30" FontWeight="SemiBold" />
+
+            <Border
+                Background="{StaticResource CardBrush}"
+                CornerRadius="12"
+                Padding="18"
+                BorderBrush="{StaticResource CardStrokeBrush}"
+                BorderThickness="1">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="Behaviour" FontSize="18" FontWeight="SemiBold" />
+
+                    <ToggleSwitch
+                        Header="Send removals to the Recycle Bin"
+                        IsOn="{Binding UseRecycleBin, Mode=TwoWay}" />
+
+                    <ToggleSwitch
+                        Header="Measure the size of installed applications"
+                        IsOn="{Binding MeasureAppSizes, Mode=TwoWay}" />
+                </StackPanel>
+            </Border>
+
+            <Border
+                Background="{StaticResource CardBrush}"
+                CornerRadius="12"
+                Padding="18"
+                BorderBrush="{StaticResource CardStrokeBrush}"
+                BorderThickness="1">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="Protected paths" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock
+                        Text="Locations you add here are never removed, even when a scan would offer them."
+                        Opacity="0.7"
+                        TextWrapping="Wrap" />
+
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox
+                            Grid.Column="0"
+                            x:Name="ProtectedPathBox"
+                            PlaceholderText="Full path to protect" />
+                        <Button Grid.Column="1" Content="Add" Click="Add_Click" VerticalAlignment="Stretch" />
+                    </Grid>
+
+                    <ListView ItemsSource="{Binding ProtectedPaths}" SelectionMode="None" MaxHeight="220">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        Grid.Column="0"
+                                        Text="{Binding}"
+                                        TextWrapping="Wrap"
+                                        VerticalAlignment="Center" />
+                                    <Button
+                                        Grid.Column="1"
+                                        Content="Remove"
+                                        Tag="{Binding}"
+                                        Click="Remove_Click" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <TextBlock Text="{Binding StatusText}" Opacity="0.7" />
+                </StackPanel>
+            </Border>
+
+            <Border
+                Background="{StaticResource CardBrush}"
+                CornerRadius="12"
+                Padding="18"
+                BorderBrush="{StaticResource CardStrokeBrush}"
+                BorderThickness="1">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Always protected" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock
+                        Text="These system locations are never removable, whatever the app offers."
+                        Opacity="0.7"
+                        TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding SystemProtectedLocations}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="12" Opacity="0.8" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

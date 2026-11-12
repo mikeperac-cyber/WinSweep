@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="WinSweep.App.Views.CleanPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Padding="36,28,36,26" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <StackPanel
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MaxWidth="560"
+                Spacing="18"
+                Visibility="{Binding EmptyStateVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+
+                <Border Width="124" Height="124" CornerRadius="62" Background="#233E557B" HorizontalAlignment="Center">
+                    <Grid>
+                        <Ellipse Width="82" Height="82" Fill="#3A5D83" Stroke="#A6BCD8" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <FontIcon Glyph="&#xE74D;" FontSize="38" Foreground="#E1E8F1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <TextBlock Text="A little room to breathe." FontSize="29" FontWeight="SemiBold" TextAlignment="Center" HorizontalAlignment="Center" />
+                <TextBlock
+                    Text="Find disposable caches and temporary files. Each item is explained before you choose what to remove."
+                    FontSize="15"
+                    Opacity="0.72"
+                    TextWrapping="Wrap"
+                    TextAlignment="Center"
+                    HorizontalAlignment="Center" />
+                <TextBlock Text="{Binding StatusText}" Opacity="0.58" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" />
+                <Button Content="Scan your PC" Click="Scan_Click" HorizontalAlignment="Center" Style="{StaticResource PrimaryActionButtonStyle}" />
+                <TextBlock Text="Removals go to the Recycle Bin by default." FontSize="12" Opacity="0.48" HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="14"
+                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
+                <ProgressRing IsActive="{Binding IsBusy}" Width="42" Height="42" HorizontalAlignment="Center" />
+                <TextBlock Text="Looking for disposable files" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                <TextBlock Text="{Binding StatusText}" Opacity="0.68" HorizontalAlignment="Center" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Grid Visibility="{Binding ResultsVisible, Converter={StaticResource BoolToVisibilityConverter}}" RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="Clean" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding StatusText}" Opacity="0.68" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch
+                        Grid.Column="1"
+                        Header="Keep removals recoverable"
+                        IsOn="{Binding IsUsingRecycleBin, Mode=TwoWay}"
+                        VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="Scan again" Click="Scan_Click" VerticalAlignment="Center" />
+                </Grid>
+
+                <Grid Grid.Row="1">
+                    <ListView ItemsSource="{Binding Candidates}" SelectionMode="None" Visibility="{Binding HasCandidates, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="7,10" ColumnSpacing="14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" MinWidth="40" />
+                                    <StackPanel Grid.Column="1" Spacing="3">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding StateText}" Opacity="0.68" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Path}" Opacity="0.44" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding SizeDisplay}" VerticalAlignment="Center" Opacity="0.85" MinWidth="90" TextAlignment="Right" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="{Binding HasCandidates, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}">
+                        <TextBlock Text="Nothing to clean" FontSize="23" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="No known disposable files were found in this scan." Opacity="0.65" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnSpacing="14" Visibility="{Binding ResultsVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{Binding TotalSizeText}" VerticalAlignment="Center" Opacity="0.72" />
+            <Button Grid.Column="1" Content="{Binding RemoveButtonText}" Click="Remove_Click" Style="{StaticResource PrimaryActionButtonStyle}" />
+        </Grid>
+    </Grid>
+</Page>
