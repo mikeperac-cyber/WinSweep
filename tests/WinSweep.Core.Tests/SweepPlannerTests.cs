@@ -169,6 +169,17 @@ public class SweepPlannerTests : IDisposable
     }
 
     [Fact]
+    public void SaveOverAnExistingManifestLeavesNoTempFile()
+    {
+        var path = Path.Combine(_root, "m", "sweep-manifest.json");
+        new SweepManifest { Id = "aaaaaaaa", Source = "clean" }.Save(path);
+        new SweepManifest { Id = "bbbbbbbb", Source = "clean" }.Save(path);
+
+        Assert.False(File.Exists(path + ".tmp"));
+        Assert.Equal("bbbbbbbb", SweepManifest.Load(path)!.Id);
+    }
+
+    [Fact]
     public void LoadReturnsNullForMissingOrDamagedFile()
     {
         Assert.Null(SweepManifest.Load(Path.Combine(_root, "none.json")));

@@ -73,7 +73,10 @@ public sealed class SweepManifest
             Directory.CreateDirectory(directory);
         }
 
-        File.WriteAllText(path, JsonSerializer.Serialize(this, SerializerOptions));
+        // Write-then-move so a crash mid-save never leaves a half-written restoration index.
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, JsonSerializer.Serialize(this, SerializerOptions));
+        File.Move(temp, path, overwrite: true);
     }
 
     /// <summary>Reads a manifest, or null when the file is missing or unreadable.</summary>
