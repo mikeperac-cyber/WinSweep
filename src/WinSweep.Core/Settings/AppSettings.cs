@@ -36,6 +36,9 @@ public sealed class AppSettings
     /// <summary>True after the user has saved their project scan-root choice, including an empty list.</summary>
     public bool ProjectScanRootsConfigured { get; set; }
 
+    /// <summary>Days without a commit or source edit before a project's build output becomes eligible.</summary>
+    public int ProjectInactivityDays { get; set; } = 30;
+
     public static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "WinSweep",

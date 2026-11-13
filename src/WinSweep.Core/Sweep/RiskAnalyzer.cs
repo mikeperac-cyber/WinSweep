@@ -72,8 +72,8 @@ public sealed class RiskAnalyzer
         {
             foreach (var app in _apps)
             {
-                if (string.Equals(segment, app.Name, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(segment, app.Publisher, StringComparison.OrdinalIgnoreCase))
+                // Name only: a publisher such as "Microsoft" would otherwise flag all of AppData\Local\Microsoft.
+                if (string.Equals(segment, app.Name, StringComparison.OrdinalIgnoreCase))
                 {
                     return (SweepRisk.Caution, $"Data that {app.Name} is installed to use; the app recreates it.");
                 }

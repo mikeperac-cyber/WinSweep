@@ -18,7 +18,18 @@ public sealed class ArtifactTree : IDisposable
         Root = Path.Combine(Path.GetTempPath(), "winsweep-artifact-tests", Guid.NewGuid().ToString("N"));
         Project = Path.Combine(Root, "ExampleProject");
         Directory.CreateDirectory(Project);
-        File.WriteAllText(Path.Combine(Project, "package.json"), "{\"name\":\"fixture\"}");
+        var marker = Path.Combine(Project, "package.json");
+        File.WriteAllText(marker, "{\"name\":\"fixture\"}");
+        File.SetLastWriteTimeUtc(marker, DateTime.UtcNow.AddDays(-90)); // An idle project, so inactivity does not hold fixtures back.
+    }
+
+    public string AddSource(string relative, DateTime lastWriteUtc)
+    {
+        var file = Path.Combine(Project, relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "x");
+        File.SetLastWriteTimeUtc(file, lastWriteUtc);
+        return file;
     }
 
     public string CreateArtifact(string name, DateTime lastActivityUtc)
@@ -45,6 +56,11 @@ public sealed class ArtifactTree : IDisposable
         {
             if (Directory.Exists(Root))
             {
+                foreach (var file in Directory.EnumerateFiles(Root, "*", SearchOption.AllDirectories))
+                {
+                    File.SetAttributes(file, FileAttributes.Normal); // Git object files are read-only.
+                }
+
                 Directory.Delete(Root, recursive: true);
             }
         }
@@ -129,6 +145,102 @@ public class ProjectArtifactScannerTests
         var artifact = Assert.Single(result.Artifacts);
         Assert.False(artifact.IsSelected);
         Assert.Contains("Git", artifact.BlockedReason);
+    }
+
+    private static ProjectArtifactScanner InactivityScanner(TimeSpan inactivity) => new(
+        scanBudget: TimeSpan.FromSeconds(5),
+        artifactBudget: TimeSpan.FromSeconds(2),
+        minimumAge: TimeSpan.FromDays(7),
+        projectInactivity: inactivity);
+
+    [Fact]
+    public void HoldsBuildOutputOfAProjectWorkedOnRecentlyAndHonoursTheThreshold()
+    {
+        using var tree = new ArtifactTree();
+        tree.CreateArtifact("node_modules", DateTime.UtcNow.AddDays(-60));
+        tree.AddSource(@"src\index.ts", DateTime.UtcNow.AddDays(-10));
+
+        var held = Assert.Single(InactivityScanner(TimeSpan.FromDays(30)).Scan(new[] { tree.Root }).Artifacts);
+        Assert.False(held.IsSelected);
+        Assert.Contains("worked on within the last 30 days", held.BlockedReason);
+        Assert.NotNull(held.ProjectLastActivityUtc);
+        Assert.StartsWith("Project last worked on", held.ActivityDisplay);
+
+        tree.AddSource(@"src\index.ts", DateTime.UtcNow.AddDays(-45));
+        var free = Assert.Single(InactivityScanner(TimeSpan.FromDays(30)).Scan(new[] { tree.Root }).Artifacts);
+        Assert.True(free.IsSelected);
+        Assert.Null(free.BlockedReason);
+
+        var heldAgain = Assert.Single(InactivityScanner(TimeSpan.FromDays(60)).Scan(new[] { tree.Root }).Artifacts);
+        Assert.False(heldAgain.IsSelected);
+        Assert.Contains("worked on within the last 60 days", heldAgain.BlockedReason);
+    }
+
+    [Fact]
+    public void HoldsBuildOutputWhenProjectActivityCannotBeMeasured()
+    {
+        using var tree = new ArtifactTree();
+        File.Delete(Path.Combine(tree.Project, "package.json"));
+        File.WriteAllText(Path.Combine(tree.Project, "App.vbproj"), "<Project />"); // A marker, but not a measured source file.
+        tree.CreateArtifact("node_modules", DateTime.UtcNow.AddDays(-60));
+
+        var artifact = Assert.Single(InactivityScanner(TimeSpan.FromDays(30)).Scan(new[] { tree.Root }).Artifacts);
+
+        Assert.False(artifact.IsSelected);
+        Assert.Equal("This project's recent activity could not be verified, so its build output is kept.", artifact.BlockedReason);
+    }
+
+    [Fact]
+    public void HoldsBuildOutputWhenTheLastGitCommitIsRecent()
+    {
+        if (RunGit(Path.GetTempPath(), "--version") != 0)
+        {
+            return; // Git is not available on this machine.
+        }
+
+        using var tree = new ArtifactTree();
+        tree.CreateArtifact("node_modules", DateTime.UtcNow.AddDays(-60));
+        Assert.Equal(0, RunGit(tree.Project, "init", "-q"));
+        Assert.Equal(0, RunGit(tree.Project, "add", "package.json"));
+        Assert.Equal(0, RunGit(tree.Project, "-c", "user.name=Test", "-c", "user.email=test@example.com",
+            "-c", "commit.gpgsign=false", "commit", "-q", "-m", "fixture"));
+        File.SetLastWriteTimeUtc(Path.Combine(tree.Project, "package.json"), DateTime.UtcNow.AddDays(-90));
+
+        var artifact = Assert.Single(InactivityScanner(TimeSpan.FromDays(30)).Scan(new[] { tree.Root }).Artifacts);
+
+        Assert.False(artifact.IsSelected);
+        Assert.Contains("worked on within the last 30 days", artifact.BlockedReason);
+    }
+
+    private static int RunGit(string workingDirectory, params string[] args)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo("git.exe")
+        {
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        foreach (var arg in args)
+        {
+            start.ArgumentList.Add(arg);
+        }
+
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(start)!;
+            var output = process.StandardOutput.ReadToEndAsync();
+            var error = process.StandardError.ReadToEndAsync();
+            process.WaitForExit();
+            _ = output.Result;
+            _ = error.Result;
+            return process.ExitCode;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return -1;
+        }
     }
 
     [Fact]

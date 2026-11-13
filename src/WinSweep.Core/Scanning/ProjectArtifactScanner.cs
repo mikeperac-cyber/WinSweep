@@ -32,7 +32,7 @@ public sealed class ProjectArtifactScanner
         ["obj"] = "Intermediate .NET build output. MSBuild recreates it."
     };
 
-    private static readonly HashSet<string> ProjectMarkers = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> ProjectMarkers = new(StringComparer.OrdinalIgnoreCase)
     {
         ".git", "package.json", "Cargo.toml", "go.mod", "pyproject.toml", "requirements.txt",
         "pom.xml", "build.gradle", "build.gradle.kts", "Makefile", "composer.json", "Gemfile",
@@ -57,19 +57,23 @@ public sealed class ProjectArtifactScanner
     private readonly TimeSpan _minimumAge;
     private readonly int _maxDirectories;
     private readonly int _maxDepth;
+    private readonly TimeSpan _projectInactivity;
+    private readonly Dictionary<string, DateTime?> _activityCache = new(StringComparer.OrdinalIgnoreCase);
 
     public ProjectArtifactScanner(
         TimeSpan? scanBudget = null,
         TimeSpan? artifactBudget = null,
         TimeSpan? minimumAge = null,
         int maxDirectories = 20000,
-        int maxDepth = 12)
+        int maxDepth = 12,
+        TimeSpan? projectInactivity = null)
     {
         _scanBudget = scanBudget ?? TimeSpan.FromSeconds(25);
         _artifactBudget = artifactBudget ?? TimeSpan.FromSeconds(1.5);
         _minimumAge = minimumAge ?? TimeSpan.FromDays(7);
         _maxDirectories = maxDirectories;
         _maxDepth = maxDepth;
+        _projectInactivity = projectInactivity ?? TimeSpan.FromDays(30);
     }
 
     public ProjectArtifactScanResult Scan(
@@ -77,6 +81,7 @@ public sealed class ProjectArtifactScanner
         Action<ProjectArtifactScanProgress>? onProgress = null,
         CancellationToken cancellationToken = default)
     {
+        _activityCache.Clear();
         var timer = Stopwatch.StartNew();
         var deadline = DateTimeOffset.UtcNow + _scanBudget;
         var artifacts = new List<ProjectArtifact>();
@@ -244,6 +249,7 @@ public sealed class ProjectArtifactScanner
             return CopyWithBlock(artifact, "The project marker or artifact name changed, so it is kept.");
         }
 
+        _activityCache.Remove(artifact.ProjectPath); // The removal boundary always re-measures.
         return InspectArtifact(artifact.ProjectPath, artifact.Path, artifact.Name, artifact.Description, cancellationToken);
     }
 
@@ -395,6 +401,26 @@ public sealed class ProjectArtifactScanner
             }
         }
 
+        DateTime? projectActivity = null;
+        if (block is null)
+        {
+            if (!_activityCache.TryGetValue(projectRoot, out projectActivity))
+            {
+                projectActivity = ProjectActivity.LastActivityUtc(projectRoot, cancellationToken);
+                _activityCache[projectRoot] = projectActivity;
+            }
+
+            if (projectActivity is null)
+            {
+                block = "This project's recent activity could not be verified, so its build output is kept.";
+            }
+            else if (DateTime.UtcNow - projectActivity.Value < _projectInactivity)
+            {
+                block = $"This project was worked on within the last {_projectInactivity.TotalDays:0} days " +
+                        $"(last activity {projectActivity.Value.ToLocalTime():d MMM yyyy}), so its build output is kept.";
+            }
+        }
+
         var oldEnough = latest is not null && DateTime.UtcNow - latest.Value >= _minimumAge;
         if (block is null && !oldEnough)
         {
@@ -418,6 +444,7 @@ public sealed class ProjectArtifactScanner
             SizeBytes = size,
             SizeStatus = status,
             LastActivityUtc = latest,
+            ProjectLastActivityUtc = projectActivity,
             BlockedReason = block,
             IsSelected = status == ScanStatus.Complete && block is null && files > 0
         };
@@ -483,6 +510,7 @@ public sealed class ProjectArtifactScanner
         SizeBytes = artifact.SizeBytes,
         SizeStatus = artifact.SizeStatus,
         LastActivityUtc = artifact.LastActivityUtc,
+        ProjectLastActivityUtc = artifact.ProjectLastActivityUtc,
         BlockedReason = reason,
         IsSelected = false
     };
@@ -505,55 +533,7 @@ public sealed class ProjectArtifactScanner
     /// <returns>True if tracked files were found; false if none; null if Git could not verify.</returns>
     private static bool? HasTrackedFiles(string projectRoot, string artifactPath)
     {
-        var git = Environment.GetEnvironmentVariable("ProgramFiles") is { Length: > 0 } programFiles
-            ? Path.Combine(programFiles, "Git", "cmd", "git.exe")
-            : "git.exe";
-
-        if (!File.Exists(git) && git != "git.exe")
-        {
-            git = "git.exe";
-        }
-
-        try
-        {
-            var relative = Path.GetRelativePath(projectRoot, artifactPath);
-            var start = new ProcessStartInfo
-            {
-                FileName = git,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-            start.ArgumentList.Add("-C");
-            start.ArgumentList.Add(projectRoot);
-            start.ArgumentList.Add("ls-files");
-            start.ArgumentList.Add("--");
-            start.ArgumentList.Add(relative);
-
-            using var process = Process.Start(start);
-            if (process is null)
-            {
-                return null;
-            }
-
-            // Drain redirected pipes while the process runs. Waiting first can deadlock
-            // when a generated folder has many tracked entries and fills the pipe buffer.
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(1000))
-            {
-                try { process.Kill(entireProcessTree: true); } catch (Exception) { }
-                return null;
-            }
-
-            var output = outputTask.GetAwaiter().GetResult();
-            _ = errorTask.GetAwaiter().GetResult();
-            return process.ExitCode == 0 ? !string.IsNullOrWhiteSpace(output) : null;
-        }
-        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
-        {
-            return null;
-        }
+        var output = ProjectActivity.RunGit(projectRoot, "ls-files", "--", Path.GetRelativePath(projectRoot, artifactPath));
+        return output is null ? null : !string.IsNullOrWhiteSpace(output);
     }
 }

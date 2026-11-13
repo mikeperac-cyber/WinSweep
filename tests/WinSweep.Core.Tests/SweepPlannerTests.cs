@@ -103,6 +103,33 @@ public class SweepPlannerTests : IDisposable
     }
 
     [Fact]
+    public void AppDataFolderNamedLikeAnAppIsCautionEvenInADifferentCase()
+    {
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var analyzer = new RiskAnalyzer(
+            new[] { new InstalledApp { Id = "registry:1", Name = "Demo App", Publisher = "Acme" } },
+            Array.Empty<string>());
+
+        var (risk, reason) = analyzer.Evaluate(Path.Combine(local, "DEMO APP", "Cache"));
+
+        Assert.Equal(SweepRisk.Caution, risk);
+        Assert.Equal("Data that Demo App is installed to use; the app recreates it.", reason);
+    }
+
+    [Fact]
+    public void AppDataFolderNamedLikeOnlyAPublisherIsSafe()
+    {
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var analyzer = new RiskAnalyzer(
+            new[] { new InstalledApp { Id = "registry:1", Name = "Demo App", Publisher = "Microsoft" } },
+            Array.Empty<string>());
+
+        var (risk, _) = analyzer.Evaluate(Path.Combine(local, "Microsoft", "Edge", "Cache"));
+
+        Assert.Equal(SweepRisk.Safe, risk);
+    }
+
+    [Fact]
     public void SaveThenLoadRoundTripsEverything()
     {
         var manifest = new SweepManifest

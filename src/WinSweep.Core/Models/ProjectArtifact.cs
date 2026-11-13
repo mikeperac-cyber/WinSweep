@@ -17,6 +17,9 @@ public sealed class ProjectArtifact : INotifyPropertyChanged
     public long SizeBytes { get; init; }
     public ScanStatus SizeStatus { get; init; } = ScanStatus.Unavailable;
     public DateTime? LastActivityUtc { get; init; }
+
+    /// <summary>When the owning project was last worked on (Git commit or source edit), if known.</summary>
+    public DateTime? ProjectLastActivityUtc { get; init; }
     public string? BlockedReason { get; init; }
     public bool IsSelected
     {
@@ -39,9 +42,11 @@ public sealed class ProjectArtifact : INotifyPropertyChanged
             ? $"≥ {ByteSizeFormatter.Format(SizeBytes)}"
             : ByteSizeFormatter.Format(SizeBytes);
 
-    public string ActivityDisplay => LastActivityUtc is null
-        ? "Activity unknown"
-        : $"Last changed {LastActivityUtc.Value.ToLocalTime():d MMM yyyy}";
+    public string ActivityDisplay => ProjectLastActivityUtc is not null
+        ? $"Project last worked on {ProjectLastActivityUtc.Value.ToLocalTime():d MMM yyyy}"
+        : LastActivityUtc is null
+            ? "Activity unknown"
+            : $"Last changed {LastActivityUtc.Value.ToLocalTime():d MMM yyyy}";
 
     public string StateText => BlockedReason ?? Description;
 }

@@ -37,7 +37,8 @@ public sealed class ProjectArtifactService
         _recycledAction = recycledAction;
         _scanner = new ProjectArtifactScanner(
             scanBudget: TimeSpan.FromSeconds(5),
-            artifactBudget: TimeSpan.FromSeconds(2));
+            artifactBudget: TimeSpan.FromSeconds(2),
+            projectInactivity: TimeSpan.FromDays(Math.Max(1, settings.ProjectInactivityDays)));
     }
 
     public ProjectArtifactCleanupResult Execute(
