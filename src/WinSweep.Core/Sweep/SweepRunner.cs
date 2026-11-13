@@ -87,30 +87,26 @@ public sealed class SweepRunner
     public string? LastSweepId =>
         History().FirstOrDefault(m => m.Entries.Any(e => e.Status == SweepEntryStatus.Quarantined))?.Id;
 
-    /// <summary>Restores a sweep and logs each restored entry and each problem.</summary>
+    /// <summary>Restores a sweep and logs one record per entry outcome, plus one failure per problem not tied to an entry.</summary>
     public RestoreResult Rollback(string sweepId, CancellationToken cancellationToken = default)
     {
-        var wasQuarantined = History().FirstOrDefault(m => m.Id == sweepId)?.Entries
-            .Where(e => e.Status == SweepEntryStatus.Quarantined).Select(e => e.Path)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>();
-
         var result = _vault.Restore(sweepId, cancellationToken);
 
-        var after = History().FirstOrDefault(m => m.Id == sweepId);
-        foreach (var entry in after?.Entries.Where(e => wasQuarantined.Contains(e.Path)) ?? Enumerable.Empty<SweepEntry>())
+        foreach (var outcome in result.Entries)
         {
-            if (entry.Status == SweepEntryStatus.Restored)
+            // A kept-in-quarantine entry still has its archive, so it is not a restore.
+            var action = outcome.Outcome switch
             {
-                LogRollback(sweepId, OperationAction.Restored, entry.Path, string.Empty, entry.SizeBytes);
-            }
-            else if (entry.Detail.Length > 0 && !result.Problems.Contains($"{entry.Path}: {entry.Detail}"))
-            {
-                // Some files already existed: the archive is kept, so this is not a restore.
-                LogRollback(sweepId, OperationAction.Skipped, entry.Path, entry.Detail, 0);
-            }
+                SweepEntryStatus.Restored => OperationAction.Restored,
+                SweepEntryStatus.Quarantined => OperationAction.Skipped,
+                _ => OperationAction.Failed
+            };
+            LogRollback(sweepId, action, outcome.Path, outcome.Detail, outcome.SizeBytes);
         }
 
-        foreach (var problem in result.Problems)
+        // Entry problems are "{path}: ..." lines and are already logged above with their entry.
+        foreach (var problem in result.Problems.Where(p =>
+                     !result.Entries.Any(o => p.StartsWith(o.Path + ": ", StringComparison.OrdinalIgnoreCase))))
         {
             LogRollback(sweepId, OperationAction.Failed, sweepId, problem, 0);
         }

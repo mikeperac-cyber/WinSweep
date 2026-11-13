@@ -108,7 +108,9 @@ public sealed class ProjectArtifactService
             else
             {
                 failed++;
-                var detail = result.FailureReason ?? "The folder could not be moved to the Recycle Bin";
+                var detail = result.FailureReason ?? (_recycledAction == OperationAction.Quarantined
+                    ? "The folder could not be moved to the quarantine vault"
+                    : "The folder could not be moved to the Recycle Bin");
                 failures.Add($"{artifact.Path}: {detail}");
                 Log(artifact, runId, OperationAction.Failed, detail, 0);
             }

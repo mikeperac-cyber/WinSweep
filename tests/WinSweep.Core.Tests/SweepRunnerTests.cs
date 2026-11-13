@@ -171,6 +171,29 @@ public class SweepRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task CorruptedArchiveIsLoggedAsExactlyOneFailureForItsEntry()
+    {
+        var dir = MakeCache("cache");
+        var runner = NewRunner();
+        var session = await runner.BeginAsync("clean", new[] { Target(dir) });
+        session!.Quarantine(dir, 100);
+        session.Complete();
+        var archive = Path.Combine(_root, "vault", session.Manifest.Id, session.Manifest.Entries.Single().Archive!);
+        var bytes = File.ReadAllBytes(archive);
+        bytes[bytes.Length / 2] ^= 0xFF;
+        File.WriteAllBytes(archive, bytes);
+
+        var result = runner.Rollback(session.Manifest.Id);
+
+        Assert.Equal(1, result.Failed);
+        var record = Assert.Single(_log.Read());
+        Assert.Equal(OperationAction.Failed, record.Action);
+        Assert.Equal("rollback", record.Command);
+        Assert.Equal(dir, record.Path);
+        Assert.Contains("checksum mismatch", record.Detail);
+    }
+
+    [Fact]
     public void RollbackOfAnUnknownSweepLogsAFailure()
     {
         var result = NewRunner().Rollback("0000dead");
@@ -211,6 +234,23 @@ public class SweepRunnerTests : IDisposable
 
         Assert.Equal(0, runner.PurgeExpired());
         Assert.Single(runner.History());
+    }
+
+    [Fact]
+    public void PurgeExpiredDeletesAnOldSweepAndLogsIt()
+    {
+        var vaultRoot = Path.Combine(_root, "vault");
+        new QuarantineVault(vaultRoot).Begin(new SweepManifest { Id = "00000001", Source = "clean", CreatedAt = DateTimeOffset.Now.AddDays(-30) });
+        new QuarantineVault(vaultRoot).Begin(new SweepManifest { Id = "00000002", Source = "clean" });
+
+        Assert.Equal(1, NewRunner().PurgeExpired());
+
+        Assert.False(Directory.Exists(Path.Combine(vaultRoot, "00000001")));
+        Assert.True(Directory.Exists(Path.Combine(vaultRoot, "00000002")));
+        var record = Assert.Single(_log.Read());
+        Assert.Equal("vault", record.Command);
+        Assert.Equal(OperationAction.Removed, record.Action);
+        Assert.Equal("00000001", record.Path);
     }
 
     [Fact]

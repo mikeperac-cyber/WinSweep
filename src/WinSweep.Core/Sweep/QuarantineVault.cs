@@ -6,8 +6,15 @@ using WinSweep.Core.Services;
 
 namespace WinSweep.Core.Sweep;
 
-/// <summary>What a restore did. Problems holds one line per thing that did not go back.</summary>
-public sealed record RestoreResult(int Restored, int Failed, int SkippedExisting, IReadOnlyList<string> Problems);
+/// <summary>
+/// What happened to one entry: <see cref="SweepEntryStatus.Restored"/> (fully extracted), <see cref="SweepEntryStatus.Quarantined"/>
+/// (kept because files already existed) or <see cref="SweepEntryStatus.Failed"/>. Detail holds the reason or warning.
+/// </summary>
+public sealed record RestoreEntryOutcome(string Path, long SizeBytes, SweepEntryStatus Outcome, string Detail);
+
+/// <summary>What a restore did. Problems holds one line per thing that did not go back; Entries one outcome per entry tried.</summary>
+public sealed record RestoreResult(int Restored, int Failed, int SkippedExisting, IReadOnlyList<string> Problems,
+    IReadOnlyList<RestoreEntryOutcome> Entries);
 
 /// <summary>
 /// Holds swept items as encrypted archives so a sweep can be undone. An item is archived, the archive
@@ -76,12 +83,13 @@ public sealed class QuarantineVault
         var manifest = manifestPath is null ? null : SweepManifest.Load(manifestPath);
         if (manifestPath is null || manifest is null)
         {
-            return new RestoreResult(0, 0, 0, new[] { "That sweep does not exist." });
+            return new RestoreResult(0, 0, 0, new[] { "That sweep does not exist." }, Array.Empty<RestoreEntryOutcome>());
         }
 
         var folder = Path.GetDirectoryName(manifestPath)!;
         var key = LoadKey(createIfMissing: false);
         var problems = new List<string>();
+        var outcomes = new List<RestoreEntryOutcome>();
         int restored = 0, failed = 0, skippedExisting = 0;
 
         try
@@ -90,6 +98,7 @@ public sealed class QuarantineVault
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 string? problem;
+                var problemsBefore = problems.Count;
                 try
                 {
                     problem = RestoreEntry(entry, folder, key, cancellationToken, ref skippedExisting, problems);
@@ -103,13 +112,23 @@ public sealed class QuarantineVault
                 if (problem is null)
                 {
                     restored++;
+                    // Lines added while restoring this entry are warnings (permissions), not failures.
+                    var warning = string.Join(" ", problems.Skip(problemsBefore));
+                    outcomes.Add(entry.Status == SweepEntryStatus.Restored
+                        ? new RestoreEntryOutcome(entry.Path, entry.SizeBytes, SweepEntryStatus.Restored, warning)
+                        : new RestoreEntryOutcome(entry.Path, entry.SizeBytes, SweepEntryStatus.Quarantined, entry.Detail));
                     continue;
                 }
 
                 failed++;
                 entry.Detail = problem;
                 problems.Add($"{entry.Path}: {problem}");
+                outcomes.Add(new RestoreEntryOutcome(entry.Path, entry.SizeBytes, SweepEntryStatus.Failed, problem));
             }
+        }
+        catch (OperationCanceledException)
+        {
+            problems.Add("Restore was cancelled.");
         }
         finally
         {
@@ -123,7 +142,7 @@ public sealed class QuarantineVault
             }
         }
 
-        return new RestoreResult(restored, failed, skippedExisting, problems);
+        return new RestoreResult(restored, failed, skippedExisting, problems, outcomes);
     }
 
     /// <summary>Permanently removes one sweep folder. Returns false when it does not exist or cannot be removed.</summary>

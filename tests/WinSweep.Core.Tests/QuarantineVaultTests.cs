@@ -526,6 +526,41 @@ public class QuarantineVaultTests : IDisposable
     }
 
     [Fact]
+    public void RestoreWithACancelledTokenReturnsWithoutRestoringAnything()
+    {
+        var dir = MakeTree();
+        var vault = NewVault();
+        var session = vault.Begin(Plan(dir));
+        session.Quarantine(dir, 1);
+        session.Complete();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var result = vault.Restore(session.Manifest.Id, cts.Token);
+
+        Assert.Equal(0, result.Restored);
+        Assert.Empty(result.Entries);
+        Assert.Contains("Restore was cancelled.", result.Problems);
+        Assert.False(Directory.Exists(dir));
+        Assert.Equal(SweepEntryStatus.Quarantined, vault.List().Single().Entries.Single().Status);
+    }
+
+    [Fact]
+    public void RestoreReportsOneOutcomePerEntry()
+    {
+        var dir = MakeTree();
+        var vault = NewVault();
+        var session = vault.Begin(Plan(dir));
+        session.Quarantine(dir, 1);
+        session.Complete();
+
+        var outcome = Assert.Single(vault.Restore(session.Manifest.Id).Entries);
+
+        Assert.Equal(dir, outcome.Path);
+        Assert.Equal(SweepEntryStatus.Restored, outcome.Outcome);
+    }
+
+    [Fact]
     public void PermissionsAreNotReappliedWhenFilesWereLeftAlone()
     {
         var dir = MakeTree();

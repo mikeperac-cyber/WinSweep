@@ -41,7 +41,7 @@ public static class VolumeSnapshot
         }
 
         var why = result.Outcome == MaintenanceOutcome.Applied
-            ? $"it returned code {result.Output.Trim()}"
+            ? (result.Output.Trim().Length == 0 ? "it returned no result" : $"it returned code {result.Output.Trim()}")
             : result.Message;
         return new SnapshotInfo(true, false,
             $"Windows could not create a snapshot: {why}. The quarantine vault can still undo this sweep.");
