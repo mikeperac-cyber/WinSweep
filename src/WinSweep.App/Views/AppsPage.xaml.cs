@@ -26,6 +26,29 @@ public sealed partial class AppsPage : Page
         await _viewModel.LoadAsync();
     }
 
+    private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.CheckUpdatesAsync();
+    }
+
+    private async void Update_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string id } && _viewModel.Updates.FirstOrDefault(u => u.Id == id) is { } update)
+        {
+            await _viewModel.UpdateAsync(update);
+        }
+    }
+
+    private async void UpdateAll_Click(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.UpdateAllAsync();
+    }
+
+    private async void StoreUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-windows-store://downloadsandupdates"));
+    }
+
     private async void Apps_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (e.AddedItems.FirstOrDefault() is InstalledApp app)

@@ -1,5 +1,6 @@
 using WinSweep.Core.Logging;
 using WinSweep.Core.Models;
+using WinSweep.Core.Platform;
 
 namespace WinSweep.Core.Maintenance;
 
@@ -35,6 +36,14 @@ public sealed class MaintenanceService
             var unsupported = MaintenanceResult.Unavailable("This task is not supported on this version of Windows.");
             Log(task, runId, unsupported);
             return unsupported;
+        }
+
+        if (task.RequiresElevation && AppEnvironment.IsStoreBuild)
+        {
+            var unavailable = MaintenanceResult.Unavailable(
+                "This task is not available in the Microsoft Store version, because it needs an administrator account.");
+            Log(task, runId, unavailable);
+            return unavailable;
         }
 
         if (task.RequiresElevation && !_isElevated())

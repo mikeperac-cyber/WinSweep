@@ -9,6 +9,7 @@
     <SelfContained>true</SelfContained>
     <RootNamespace>WinSweep.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\WinSweep.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsPackageType>None</WindowsPackageType>
@@ -42,6 +43,12 @@
   <ItemGroup Condition="'$(PackageAsMsix)' == 'true'">
     <Content Include="Assets\**" />
     <AppxManifest Include="Package.appxmanifest" />
+  </ItemGroup>
+
+  <!-- The unpackaged build needs these too: the window/taskbar icon and the header logo. -->
+  <ItemGroup Condition="'$(PackageAsMsix)' != 'true'">
+    <Content Include="Assets\WinSweep.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Square44x44Logo.targetsize-32_altform-unplated.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 

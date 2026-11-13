@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using WinSweep.Core.Apps;
 using WinSweep.Core.Logging;
+using WinSweep.Core.Maintenance;
 using WinSweep.Core.Models;
 using WinSweep.Core.Settings;
 
@@ -12,6 +13,7 @@ public sealed class AppsViewModel : ObservableObject
     private readonly AppSettings _settings;
     private readonly AppInventory _inventory = new();
     private readonly LeftoverScanner _leftovers = new();
+    private readonly AppUpdateService _updater;
     private List<InstalledApp> _allApps = new();
     private bool _isBusy;
     private string _searchText = string.Empty;
@@ -24,10 +26,18 @@ public sealed class AppsViewModel : ObservableObject
         _settings = settings;
         Apps = new ObservableCollection<InstalledApp>();
         Leftovers = new ObservableCollection<LeftoverItem>();
+        Updates = new ObservableCollection<AppUpdate>();
+        Updates.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUpdates));
+        _updater = new AppUpdateService(log);
     }
 
     public ObservableCollection<InstalledApp> Apps { get; }
     public ObservableCollection<LeftoverItem> Leftovers { get; }
+
+    /// <summary>Apps that winget can update, filled by <see cref="CheckUpdatesAsync"/>.</summary>
+    public ObservableCollection<AppUpdate> Updates { get; }
+
+    public bool HasUpdates => Updates.Count > 0;
 
     public bool IsBusy
     {
@@ -104,6 +114,103 @@ public sealed class AppsViewModel : ObservableObject
         catch (Exception e) when (e is UnauthorizedAccessException or IOException)
         {
             StatusText = $"The application list could not be read: {e.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Asks winget which apps have a newer version. Nothing is installed here.</summary>
+    public async Task CheckUpdatesAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        StatusText = "Checking for app updates...";
+        try
+        {
+            var (updates, error) = await _updater.ListAsync();
+            Updates.Clear();
+            foreach (var update in updates)
+            {
+                Updates.Add(update);
+            }
+
+            StatusText = error ?? (updates.Count == 0
+                ? "Every app that winget knows about is up to date."
+                : $"{updates.Count} app update(s) available.");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Installs the newer version of one app.</summary>
+    public async Task UpdateAsync(AppUpdate update)
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        StatusText = $"Updating {update.Name}...";
+        try
+        {
+            var result = await _updater.UpdateAsync(update, Guid.NewGuid().ToString("N")[..8]);
+            if (result.Outcome == MaintenanceOutcome.Applied)
+            {
+                Updates.Remove(update);
+                StatusText = $"{update.Name} was updated to {update.Available}.";
+            }
+            else
+            {
+                StatusText = $"{update.Name} was not updated: {result.Message}";
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Installs every listed update, one after another.</summary>
+    public async Task UpdateAllAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        var runId = Guid.NewGuid().ToString("N")[..8];
+        var pending = Updates.ToList();
+        int updated = 0, failed = 0;
+        try
+        {
+            foreach (var update in pending)
+            {
+                StatusText = $"Updating {update.Name} ({updated + failed + 1} of {pending.Count})...";
+                var result = await _updater.UpdateAsync(update, runId);
+                if (result.Outcome == MaintenanceOutcome.Applied)
+                {
+                    Updates.Remove(update);
+                    updated++;
+                }
+                else
+                {
+                    failed++;
+                }
+            }
+
+            StatusText = failed == 0
+                ? $"{updated} app(s) updated."
+                : $"{updated} app(s) updated, {failed} failed. The History page has the details.";
         }
         finally
         {

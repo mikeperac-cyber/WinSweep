@@ -8,6 +8,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -21,7 +22,11 @@
                 <TextBlock Text="Apps" FontSize="28" FontWeight="SemiBold" />
                 <TextBlock Text="{Binding StatusText}" Opacity="0.66" />
             </StackPanel>
-            <Button Grid.Column="1" Content="Refresh list" Click="Reload_Click" VerticalAlignment="Center" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button Content="Check for updates" Click="CheckUpdates_Click" />
+                <Button Content="Open Store updates" Click="StoreUpdates_Click" ToolTipService.ToolTip="Microsoft Store apps are updated by the Store itself." />
+                <Button Content="Refresh list" Click="Reload_Click" />
+            </StackPanel>
         </Grid>
 
         <Grid Grid.Row="1" ColumnSpacing="14">
@@ -33,8 +38,47 @@
             <TextBlock Grid.Column="1" Text="Select an app to review its uninstaller and leftover data." Opacity="0.55" VerticalAlignment="Center" />
         </Grid>
 
-        <ListView
+        <Border
             Grid.Row="2"
+            Background="{StaticResource CardBrush}"
+            BorderBrush="{StaticResource CardStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="14"
+            Padding="16,12"
+            Visibility="{Binding HasUpdates, Converter={StaticResource BoolToVisibilityConverter}}">
+            <StackPanel Spacing="6">
+                <Grid>
+                    <TextBlock Text="Updates available" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Content="Update all" Click="UpdateAll_Click" HorizontalAlignment="Right" />
+                </Grid>
+                <ListView ItemsSource="{Binding Updates}" SelectionMode="None" MaxHeight="180">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="2,4" ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Id}" Opacity="0.5" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Version}" Opacity="0.7" />
+                                    <TextBlock Text="&#x2192;" Opacity="0.5" />
+                                    <TextBlock Text="{Binding Available}" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <Button Grid.Column="2" Content="Update" Tag="{Binding Id}" Click="Update_Click" VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </StackPanel>
+        </Border>
+
+        <ListView
+            Grid.Row="3"
             ItemsSource="{Binding Apps}"
             SelectionMode="Single"
             SelectionChanged="Apps_SelectionChanged">
@@ -76,7 +120,7 @@
         </ListView>
 
         <Border
-            Grid.Row="3"
+            Grid.Row="4"
             Background="{StaticResource CardBrush}"
             BorderBrush="{StaticResource CardStrokeBrush}"
             BorderThickness="1"

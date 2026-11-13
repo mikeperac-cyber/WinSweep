@@ -35,6 +35,7 @@ public sealed partial class MainWindow : Window
 
         Title = "WinSweep";
         ExtendsContentIntoTitleBar = false;
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "WinSweep.ico"));
 
         SelectPage(string.IsNullOrWhiteSpace(initialPage) ? "Status" : initialPage);
     }

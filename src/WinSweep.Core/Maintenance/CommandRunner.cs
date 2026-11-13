@@ -14,7 +14,6 @@ public static class CommandRunner
         string fileName,
         string arguments,
         TimeSpan timeout,
-        bool requiresElevation,
         CancellationToken cancellationToken = default)
     {
         var startInfo = new ProcessStartInfo
@@ -27,16 +26,9 @@ public static class CommandRunner
             CreateNoWindow = true
         };
 
-        if (requiresElevation)
-        {
-            // UseShellExecute has to be on for the elevation prompt, and the output
-            // cannot be redirected in that case.
-            startInfo.UseShellExecute = true;
-            startInfo.RedirectStandardOutput = false;
-            startInfo.RedirectStandardError = false;
-            startInfo.Verb = "runas";
-        }
-
+        // Tasks that need an administrator account only run once this process is already
+        // elevated (see MaintenanceService), so the child inherits that token and its output
+        // can still be captured.
         try
         {
             using var process = Process.Start(startInfo);
@@ -45,46 +37,28 @@ public static class CommandRunner
                 return MaintenanceResult.Failed("Windows could not start the task.");
             }
 
-            if (!requiresElevation)
-            {
-                var stdout = process.StandardOutput.ReadToEndAsync();
-                var stderr = process.StandardError.ReadToEndAsync();
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
 
-                using var timeoutSource = new CancellationTokenSource(timeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+            using var timeoutSource = new CancellationTokenSource(timeout);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
 
-                try
-                {
-                    await process.WaitForExitAsync(linked.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    TryKill(process);
-                    return MaintenanceResult.Failed(
-                        $"The task did not finish within {timeout.TotalMinutes:0.#} minutes and was stopped.");
-                }
-
-                var output = await stdout + await stderr;
-                return process.ExitCode == 0
-                    ? MaintenanceResult.Applied("Done.", output.Trim())
-                    : MaintenanceResult.Failed($"The task failed with exit code {process.ExitCode}.", output.Trim(), process.ExitCode);
-            }
-
-            using var elevatedTimeout = new CancellationTokenSource(timeout);
             try
             {
-                await process.WaitForExitAsync(elevatedTimeout.Token);
+                await process.WaitForExitAsync(linked.Token);
             }
             catch (OperationCanceledException)
             {
                 TryKill(process);
+                cancellationToken.ThrowIfCancellationRequested(); // the user cancelled, not a timeout
                 return MaintenanceResult.Failed(
                     $"The task did not finish within {timeout.TotalMinutes:0.#} minutes and was stopped.");
             }
 
+            var output = await stdout + await stderr;
             return process.ExitCode == 0
-                ? MaintenanceResult.Applied("Done.")
-                : MaintenanceResult.Failed($"The task failed with exit code {process.ExitCode}.", string.Empty, process.ExitCode);
+                ? MaintenanceResult.Applied("Done.", output.Trim())
+                : MaintenanceResult.Failed($"The task failed with exit code {process.ExitCode}.", output.Trim(), process.ExitCode);
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
         {

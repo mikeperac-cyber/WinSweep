@@ -44,5 +44,11 @@ public sealed class MaintenanceTask
     /// <summary>True when the task is supported on this version of Windows.</summary>
     public Func<bool>? IsSupported { get; init; }
 
+    /// <summary>
+    /// True when the task can run in a Microsoft Store build. Tasks that need an
+    /// administrator account are not available there.
+    /// </summary>
+    public bool StoreAvailable { get; init; } = true;
+
     public required Func<MaintenanceContext, CancellationToken, Task<MaintenanceResult>> RunAsync { get; init; }
 }

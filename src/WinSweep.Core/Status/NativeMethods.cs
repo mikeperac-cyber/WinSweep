@@ -56,6 +56,30 @@ internal static class NativeMethods
         out ulong lpTotalNumberOfBytes,
         out ulong lpTotalNumberOfFreeBytes);
 
+    // Shell file operation, used to send items to the Recycle Bin without any UI.
+    public const uint FO_DELETE = 0x0003;
+    public const ushort FOF_SILENT = 0x0004;
+    public const ushort FOF_NOCONFIRMATION = 0x0010;
+    public const ushort FOF_ALLOWUNDO = 0x0040;
+    public const ushort FOF_NOERRORUI = 0x0400;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct ShFileOpStruct
+    {
+        public IntPtr hwnd;
+        public uint wFunc;
+        public string pFrom;
+        public string? pTo;
+        public ushort fFlags;
+        [MarshalAs(UnmanagedType.Bool)]
+        public bool fAnyOperationsAborted;
+        public IntPtr hNameMappings;
+        public string? lpszProgressTitle;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SHFileOperation(ref ShFileOpStruct lpFileOp);
+
     public static ulong ToUInt64(FileTime time) =>
         ((ulong)time.dwHighDateTime << 32) | time.dwLowDateTime;
 

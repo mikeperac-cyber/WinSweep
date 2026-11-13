@@ -33,7 +33,7 @@ public static class MaintenanceCatalog
             Impact = "The next web address lookup goes to the server again. Nothing is deleted from disk.",
             Timeout = TimeSpan.FromMinutes(1),
             RunAsync = async (context, cancellationToken) =>
-                await CommandRunner.RunAsync("ipconfig.exe", "/flushdns", TimeSpan.FromMinutes(1), requiresElevation: false, cancellationToken)
+                await CommandRunner.RunAsync("ipconfig.exe", "/flushdns", TimeSpan.FromMinutes(1), cancellationToken)
         },
         new()
         {
@@ -51,6 +51,7 @@ public static class MaintenanceCatalog
             Description = "Clears the copies of update and application files that Windows keeps to share updates with other machines.",
             Impact = "Updates may be downloaded again later. Nothing that is pending an update is touched.",
             RequiresElevation = true,
+            StoreAvailable = false,
             Timeout = TimeSpan.FromMinutes(5),
             IsSupported = () => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 1709),
             RunAsync = async (context, cancellationToken) =>
@@ -58,7 +59,6 @@ public static class MaintenanceCatalog
                     "powershell.exe",
                     "-NoProfile -NonInteractive -Command \"Delete-DeliveryOptimizationCache -Force\"",
                     TimeSpan.FromMinutes(5),
-                    requiresElevation: true,
                     cancellationToken)
         },
         new()
@@ -68,13 +68,13 @@ public static class MaintenanceCatalog
             Description = "Runs the Windows component cleanup, which removes the older versions of system files that updates have replaced.",
             Impact = "The old copies are removed. Undoing an update that Windows no longer supports becomes impossible.",
             RequiresElevation = true,
+            StoreAvailable = false,
             Timeout = TimeSpan.FromMinutes(30),
             RunAsync = async (context, cancellationToken) =>
                 await CommandRunner.RunAsync(
                     "Dism.exe",
                     "/Online /Cleanup-Image /StartComponentCleanup",
                     TimeSpan.FromMinutes(30),
-                    requiresElevation: true,
                     cancellationToken)
         },
         new()
@@ -84,13 +84,13 @@ public static class MaintenanceCatalog
             Description = "Runs the storage trim pass so solid state drives keep their write performance.",
             Impact = "The drive is rewritten in place. It is safe, and it can take a few minutes on a large drive.",
             RequiresElevation = true,
+            StoreAvailable = false,
             Timeout = TimeSpan.FromMinutes(30),
             RunAsync = async (context, cancellationToken) =>
                 await CommandRunner.RunAsync(
                     "defrag.exe",
                     $"{SystemDrive()} /O",
                     TimeSpan.FromMinutes(30),
-                    requiresElevation: true,
                     cancellationToken)
         },
         new()
@@ -101,13 +101,13 @@ public static class MaintenanceCatalog
             Impact = "Nothing changes. This only verifies, it does not repair.",
             IsCheck = true,
             RequiresElevation = true,
+            StoreAvailable = false,
             Timeout = TimeSpan.FromMinutes(30),
             RunAsync = async (context, cancellationToken) =>
                 await CommandRunner.RunAsync(
                     "sfc.exe",
                     "/verifyonly",
                     TimeSpan.FromMinutes(30),
-                    requiresElevation: true,
                     cancellationToken)
         }
     };
@@ -124,7 +124,6 @@ public static class MaintenanceCatalog
             "powershell.exe",
             "-NoProfile -NonInteractive -Command \"Get-PhysicalDisk | Select-Object FriendlyName,HealthStatus,MediaType | ConvertTo-Json -Compress\"",
             TimeSpan.FromMinutes(1),
-            requiresElevation: false,
             cancellationToken);
 
         if (result.Outcome != MaintenanceOutcome.Applied)

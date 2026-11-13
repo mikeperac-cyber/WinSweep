@@ -18,11 +18,14 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <Border Width="32" Height="32" CornerRadius="10" Background="#2D4540">
-                    <Canvas Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <Line X1="13" Y1="2" X2="8" Y2="12" Stroke="#C8DDD2" StrokeThickness="2.2" />
-                        <Polygon Points="5,11 14,13 12,18 3,16" Fill="#B8D6C9" />
-                    </Canvas>
+                <Border Width="32" Height="32">
+                    <Image
+                        Source="ms-appx:///Assets/Square44x44Logo.targetsize-32_altform-unplated.png"
+                        Width="28"
+                        Height="28"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AccessibilityView="Raw" />
                 </Border>
                 <TextBlock Text="WinSweep" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>

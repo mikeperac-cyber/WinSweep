@@ -23,6 +23,13 @@ public sealed class MaintenanceTaskItem : ObservableObject
     public string Impact => Task.Impact;
     public bool RequiresElevation => Task.RequiresElevation;
     public bool IsCheck => Task.IsCheck;
+    public bool StoreAvailable => Task.StoreAvailable;
+
+    /// <summary>True when the task can be started from this installation.</summary>
+    public bool CanRun => StoreAvailable || !WinSweep.Core.Platform.AppEnvironment.IsStoreBuild;
+
+    /// <summary>True when the "Run as administrator" button should be offered.</summary>
+    public bool CanRunElevated => RequiresElevation && CanRun;
 
     public string StatusText
     {
@@ -125,6 +132,9 @@ public sealed class MaintenanceViewModel : ObservableObject
 
     /// <summary>True when this process already runs with administrator rights.</summary>
     public bool IsElevated => WinSweep.Core.Cleanup.CleanupScanner.IsElevated();
+
+    /// <summary>True when this process has a package identity, as a Microsoft Store package does.</summary>
+    public bool IsStoreBuild => WinSweep.Core.Platform.AppEnvironment.IsStoreBuild;
 
     public void ShowTasks() => HasStarted = true;
 

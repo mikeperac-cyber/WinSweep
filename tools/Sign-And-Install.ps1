@@ -10,7 +10,7 @@ exported to artifacts\signing so the package can be signed again later.
 #>
 param(
     [string]$Artifacts = (Join-Path $PSScriptRoot "..\artifacts"),
-    [string]$Publisher = "CN=WinSweep",
+    [string]$Publisher = "CN=4F57FA0D-0E3C-4115-91BB-AEA7447D17EF",
     [switch]$SkipInstall,
     [switch]$Uninstall,
     [switch]$Timestamp,

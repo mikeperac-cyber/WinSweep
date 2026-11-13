@@ -98,4 +98,29 @@ public class UninstallCommandTests
         Assert.Equal(expectedExecutable, executable);
         Assert.Equal(expectedArguments, arguments);
     }
+
+    [Fact]
+    public void ALockedFileFailsQuietlyInsteadOfThrowing()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "winsweep-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var file = Path.Combine(root, "locked.bin");
+        File.WriteAllText(file, "x");
+
+        try
+        {
+            // An exclusive handle stops the shell from moving the file, so nothing reaches
+            // the user's Recycle Bin and the failure path is exercised without a dialog.
+            using (new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                var result = WinSweep.Core.Services.RecycleBin.Send(file, 1);
+                Assert.False(result.Succeeded);
+                Assert.True(File.Exists(file));
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }

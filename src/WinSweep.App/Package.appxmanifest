@@ -5,14 +5,22 @@
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap rescap">
 
+  <!--
+    Identity values from the Partner Center reservation. Do not change these to
+    anything else; the Store signs the package with the matching certificate.
+  -->
   <Identity
-    Name="WinSweep.Dev"
-    Publisher="CN=WinSweep"
+    Name="MikePerac.WinPulseStudio"
+    Publisher="CN=4F57FA0D-0E3C-4115-91BB-AEA7447D17EF"
     Version="0.1.0.0" />
 
   <Properties>
+    <!--
+      DisplayName matches the name reserved in Partner Center.
+      PublisherDisplayName is the developer name shown in the Store listing.
+    -->
     <DisplayName>WinSweep</DisplayName>
-    <PublisherDisplayName>WinSweep</PublisherDisplayName>
+    <PublisherDisplayName>MikePerac</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
@@ -44,7 +52,8 @@
         Square44x44Logo="Assets\Square44x44Logo.png">
         <uap:DefaultTile
           Wide310x150Logo="Assets\Wide310x150Logo.png"
-          Square310x310Logo="Assets\Square310x310Logo.png" />
+          Square310x310Logo="Assets\Square310x310Logo.png"
+          Square71x71Logo="Assets\Square71x71Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
     </Application>

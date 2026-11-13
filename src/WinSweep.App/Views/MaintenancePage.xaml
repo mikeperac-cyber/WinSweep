@@ -68,8 +68,14 @@
                                 <TextBlock Text="{Binding StatusText}" Opacity="0.82" TextWrapping="Wrap" Margin="0,3,0,0" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
-                                <Button Content="Run" Tag="{Binding Id}" Click="Run_Click" HorizontalAlignment="Right" />
-                                <Button Content="Run as administrator" Tag="{Binding Id}" Click="RunElevated_Click" HorizontalAlignment="Right" Visibility="{Binding RequiresElevation, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                <Button Content="Run" Tag="{Binding Id}" Click="Run_Click" HorizontalAlignment="Right" Visibility="{Binding CanRun, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                <TextBlock
+                                    Text="Not available in the Microsoft Store version"
+                                    FontSize="11"
+                                    Opacity="0.6"
+                                    HorizontalAlignment="Right"
+                                    Visibility="{Binding CanRun, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}" />
+                                <Button Content="Run as administrator" Tag="{Binding Id}" Click="RunElevated_Click" HorizontalAlignment="Right" Visibility="{Binding CanRunElevated, Converter={StaticResource BoolToVisibilityConverter}}" />
                             </StackPanel>
                         </Grid>
                     </DataTemplate>
