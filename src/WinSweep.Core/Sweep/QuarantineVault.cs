@@ -17,7 +17,7 @@ public sealed class QuarantineVault
 {
     private const string ManifestFileName = "sweep-manifest.json";
     private const string KeyFileName = "vault.key";
-    private static readonly Regex IdPattern = new("^[0-9a-f]{8}$", RegexOptions.Compiled);
+    private static readonly Regex IdPattern = new(@"^[0-9a-f]{8}\z", RegexOptions.Compiled);
 
     /// <summary>Folder that holds one sub-folder per sweep, plus vault.key.</summary>
     public string Root { get; }
@@ -30,7 +30,8 @@ public sealed class QuarantineVault
 
     /// <summary>
     /// Starts a real sweep: marks the manifest as not a dry run, creates its folder and saves it.
-    /// Throws an IOException or UnauthorizedAccessException when the vault folder cannot be written.
+    /// Throws an IOException or UnauthorizedAccessException when the vault folder cannot be written,
+    /// and an InvalidOperationException when a sweep with the same id is already in the vault.
     /// </summary>
     public SweepSession Begin(SweepManifest manifest)
     {
@@ -39,8 +40,13 @@ public sealed class QuarantineVault
             throw new ArgumentException("The sweep id must be 8 lowercase hex characters.", nameof(manifest));
         }
 
-        manifest.DryRun = false;
         var folder = Path.Combine(Root, manifest.Id);
+        if (File.Exists(ManifestFile(folder)))
+        {
+            throw new InvalidOperationException($"A sweep with id {manifest.Id} already exists in the vault.");
+        }
+
+        manifest.DryRun = false;
         Directory.CreateDirectory(folder);
         var session = new SweepSession(this, manifest, folder, LoadKey(createIfMissing: true));
         manifest.Save(Path.Combine(folder, ManifestFileName));
@@ -83,7 +89,17 @@ public sealed class QuarantineVault
             foreach (var entry in manifest.Entries.Where(e => e.Status == SweepEntryStatus.Quarantined))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var problem = RestoreEntry(entry, folder, key, cancellationToken, ref skippedExisting, problems);
+                string? problem;
+                try
+                {
+                    problem = RestoreEntry(entry, folder, key, cancellationToken, ref skippedExisting, problems);
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    // One damaged manifest entry must not stop the others from coming back.
+                    problem = e.Message;
+                }
+
                 if (problem is null)
                 {
                     restored++;
@@ -160,12 +176,20 @@ public sealed class QuarantineVault
             return "The vault key is missing or unreadable";
         }
 
-        var archive = entry.Archive is null ? null : Path.Combine(folder, entry.Archive);
-        if (archive is null || !File.Exists(archive))
+        // The manifest is data on disk: it must name a plain .wsq file inside the sweep folder.
+        if (entry.Archive is null || entry.Archive != Path.GetFileName(entry.Archive) ||
+            !entry.Archive.EndsWith(".wsq", StringComparison.OrdinalIgnoreCase))
+        {
+            return "invalid archive name in the sweep record, not restored";
+        }
+
+        var archive = Path.Combine(folder, entry.Archive);
+        if (!File.Exists(archive))
         {
             return "checksum mismatch, not restored";
         }
 
+        int leftAlone;
         try
         {
             if (!string.Equals(SweepArchive.Sha256Hex(archive), entry.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -179,8 +203,8 @@ public sealed class QuarantineVault
                 return $"Refused by the safety guard ({verdict.Reason})";
             }
 
-            var (_, skipped) = SweepArchive.Extract(archive, entry.Path, entry.IsDirectory, key, ct);
-            skippedExisting += skipped;
+            (_, leftAlone) = SweepArchive.Extract(archive, entry.Path, entry.IsDirectory, key, ct);
+            skippedExisting += leftAlone;
         }
         catch (Exception e) when (e is InvalidDataException or CryptographicException or IOException or UnauthorizedAccessException)
         {
@@ -198,6 +222,13 @@ public sealed class QuarantineVault
                 // ACL APIs throw many unrelated types for a bad SDDL or an unmappable account; the files are back regardless.
                 problems.Add($"{entry.Path}: restored, but the permissions could not be re-applied ({e.Message})");
             }
+        }
+
+        if (leftAlone > 0)
+        {
+            // Not everything came back, so keep the archive: it is still the only copy of those files.
+            entry.Detail = $"{leftAlone} file(s) already existed and were left alone";
+            return null;
         }
 
         entry.Status = SweepEntryStatus.Restored;
@@ -312,6 +343,9 @@ public sealed class SweepSession
 
     public SweepManifest Manifest { get; }
 
+    /// <summary>Test seam: runs after the index is saved and before any original is deleted.</summary>
+    internal Action? BeforeDelete { get; set; }
+
     internal SweepSession(QuarantineVault vault, SweepManifest manifest, string folder, byte[]? key)
     {
         _vaultRoot = vault.Root;
@@ -345,6 +379,12 @@ public sealed class SweepSession
 
     private RemovalResult QuarantineCore(string path, int index)
     {
+        if (index >= 0 && Manifest.Entries[index].Status is SweepEntryStatus.Quarantined or SweepEntryStatus.Restored)
+        {
+            // Checked first and left untouched: restoration relies on this entry status.
+            return RemovalResult.Failed("Already swept");
+        }
+
         if (!PathGuard.Evaluate(path).Allowed)
         {
             return Fail(index, "Refused by the safety guard");
@@ -362,12 +402,6 @@ public sealed class SweepSession
         }
 
         var entry = Manifest.Entries[index];
-        if (entry.Status is SweepEntryStatus.Quarantined or SweepEntryStatus.Restored)
-        {
-            // Failing here must not overwrite the status that restoration relies on.
-            return RemovalResult.Failed("Already swept");
-        }
-
         if (!(entry.IsDirectory ? Directory.Exists(full) : File.Exists(full)))
         {
             return Fail(index, "The item no longer exists");
@@ -391,6 +425,12 @@ public sealed class SweepSession
 
         var archiveName = $"{index:D4}.wsq";
         var archivePath = Path.Combine(_folder, archiveName);
+        if (File.Exists(archivePath))
+        {
+            // Not ours to overwrite or delete.
+            return Fail(index, "An archive with that name already exists");
+        }
+
         ArchiveResult archive;
         string sha;
         try
@@ -406,32 +446,63 @@ public sealed class SweepSession
 
             sha = SweepArchive.Sha256Hex(archivePath);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (OperationCanceledException)
         {
+            DeleteQuietly(archivePath);
+            throw;
+        }
+        catch (Exception e)
+        {
+            // Whatever went wrong, nothing has been removed yet: drop the partial archive and fail this entry.
             DeleteQuietly(archivePath);
             return Fail(index, e.Message);
         }
 
+        // Persist the restoration index before touching any original. If this cannot be saved the
+        // archive is useless to the user, so give it up and delete nothing.
         entry.Archive = archiveName;
         entry.Sha256 = sha;
         entry.FilesArchived = archive.ArchivedFiles.Count;
         entry.SkippedFiles = archive.SkippedFiles;
+        entry.Status = SweepEntryStatus.Quarantined;
+        entry.Detail = string.Empty;
+        try
+        {
+            Manifest.Save(QuarantineVault.ManifestFile(_folder));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            DeleteQuietly(archivePath);
+            entry.Archive = null;
+            entry.Sha256 = null;
+            entry.FilesArchived = 0;
+            entry.SkippedFiles = new List<string>();
+            return Fail(index, $"The sweep record could not be saved: {e.Message}");
+        }
 
-        // The archive is complete and checksummed; only now is anything removed.
+        BeforeDelete?.Invoke();
+
         long freed = 0;
         foreach (var file in archive.ArchivedFiles)
         {
             try
             {
-                var length = new FileInfo(file).Length;
-                var attributes = File.GetAttributes(file);
-                if (attributes.HasFlag(FileAttributes.ReadOnly))
+                // A file that changed after it was archived is not fully in the archive: keep it.
+                var (archivedLength, archivedWrite) = archive.Stamps[file];
+                var info = new FileInfo(file);
+                if (info.Length != archivedLength || info.LastWriteTimeUtc != archivedWrite)
                 {
-                    File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+                    entry.SkippedFiles.Add(file);
+                    continue;
+                }
+
+                if (info.Attributes.HasFlag(FileAttributes.ReadOnly))
+                {
+                    File.SetAttributes(file, info.Attributes & ~FileAttributes.ReadOnly);
                 }
 
                 File.Delete(file);
-                freed += length;
+                freed += archivedLength;
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
@@ -444,8 +515,7 @@ public sealed class SweepSession
             RemoveEmptyDirectories(full);
         }
 
-        entry.Status = SweepEntryStatus.Quarantined;
-        entry.Detail = string.Empty;
+        // Quarantine() saves again after this, recording any files that were left behind.
         return RemovalResult.Ok(freed);
     }
 

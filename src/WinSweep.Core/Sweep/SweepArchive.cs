@@ -5,7 +5,9 @@ using WinSweep.Core.Safety;
 
 namespace WinSweep.Core.Sweep;
 
-internal sealed record ArchiveResult(List<string> ArchivedFiles, List<string> SkippedFiles, long Bytes);
+/// <summary>Stamps holds the length and last-write time of each archived file, as read when it was archived.</summary>
+internal sealed record ArchiveResult(List<string> ArchivedFiles, List<string> SkippedFiles, long Bytes,
+    Dictionary<string, (long Length, DateTime LastWriteUtc)> Stamps);
 
 /// <summary>Reads and writes the .wsq format: [16-byte IV][AES-256-CBC(GZip(tar))].</summary>
 internal static class SweepArchive
@@ -17,6 +19,7 @@ internal static class SweepArchive
     {
         var archived = new List<string>();
         var skipped = new List<string>();
+        var stamps = new Dictionary<string, (long Length, DateTime LastWriteUtc)>(StringComparer.OrdinalIgnoreCase);
         long bytes = 0;
 
         using var aes = Aes.Create();
@@ -30,7 +33,7 @@ internal static class SweepArchive
         {
             if (File.Exists(sourcePath))
             {
-                AddFile(tar, sourcePath, Path.GetFileName(sourcePath), archived, skipped, ref bytes, ct);
+                AddFile(tar, sourcePath, Path.GetFileName(sourcePath), archived, skipped, stamps, ref bytes, ct);
             }
             else
             {
@@ -77,18 +80,18 @@ internal static class SweepArchive
                         }
                         else
                         {
-                            AddFile(tar, child, name, archived, skipped, ref bytes, ct);
+                            AddFile(tar, child, name, archived, skipped, stamps, ref bytes, ct);
                         }
                     }
                 }
             }
         }
 
-        return new ArchiveResult(archived, skipped, bytes);
+        return new ArchiveResult(archived, skipped, bytes, stamps);
     }
 
     private static void AddFile(TarWriter tar, string path, string name, List<string> archived,
-        List<string> skipped, ref long bytes, CancellationToken ct)
+        List<string> skipped, Dictionary<string, (long Length, DateTime LastWriteUtc)> stamps, ref long bytes, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (PathGuard.IsReparsePoint(path))
@@ -111,13 +114,17 @@ internal static class SweepArchive
 
         using (fs)
         {
+            // Read before the copy, so a write that lands during it shows up as a difference later.
+            var lastWrite = File.GetLastWriteTimeUtc(path);
+            var length = fs.Length;
             tar.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, name)
             {
                 DataStream = fs,
-                ModificationTime = File.GetLastWriteTimeUtc(path)
+                ModificationTime = lastWrite
             });
             archived.Add(path);
-            bytes += fs.Length;
+            stamps[path] = (length, lastWrite);
+            bytes += length;
         }
     }
 

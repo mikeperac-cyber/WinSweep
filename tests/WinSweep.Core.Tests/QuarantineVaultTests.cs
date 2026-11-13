@@ -1,3 +1,6 @@
+using System.Formats.Tar;
+using System.IO.Compression;
+using System.Security.Cryptography;
 using WinSweep.Core.Models;
 using WinSweep.Core.Services;
 using WinSweep.Core.Sweep;
@@ -19,7 +22,7 @@ public class QuarantineVaultTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_root, true); } catch (IOException) { }
+        try { Directory.Delete(_root, true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     private static RiskAnalyzer NoRisk() => new(Array.Empty<InstalledApp>(), Array.Empty<string>());
@@ -233,6 +236,11 @@ public class QuarantineVaultTests : IDisposable
         Assert.Equal(1, result.SkippedExisting);
         Assert.Equal("newer content", File.ReadAllText(Path.Combine(dir, "a.txt")));
         Assert.True(File.Exists(Path.Combine(dir, "sub", "b.bin")));
+        // The archive is the only copy of the file that was left alone, so it must stay.
+        var entry = vault.List().Single().Entries.Single();
+        Assert.Equal(SweepEntryStatus.Quarantined, entry.Status);
+        Assert.Equal("1 file(s) already existed and were left alone", entry.Detail);
+        Assert.True(File.Exists(Path.Combine(SweepFolder(session.Manifest), entry.Archive!)));
     }
 
     [Fact]
@@ -289,7 +297,208 @@ public class QuarantineVaultTests : IDisposable
         var result = session.Quarantine(_root, 1);
 
         Assert.False(result.Succeeded);
+        Assert.Equal(VaultRefusal, result.FailureReason);
         Assert.True(Directory.Exists(_vaultRoot));
         Assert.True(File.Exists(Path.Combine(_root, "f.txt")));
+    }
+
+    private const string VaultRefusal = "Refused: it is, or contains, the quarantine vault";
+
+    [Fact]
+    public void PathUnderTheVaultCannotBeQuarantined()
+    {
+        var session = NewVault().Begin(Plan(MakeTree()));
+        var inner = Path.Combine(_vaultRoot, "inner");
+        Directory.CreateDirectory(inner);
+        File.WriteAllText(Path.Combine(inner, "f.txt"), "f");
+
+        var result = session.Quarantine(inner, 1);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(VaultRefusal, result.FailureReason);
+        Assert.True(File.Exists(Path.Combine(inner, "f.txt")));
+    }
+
+    private string ManifestFileOf(SweepManifest m) => Path.Combine(SweepFolder(m), "sweep-manifest.json");
+
+    [Fact]
+    public void IndexIsOnDiskBeforeAnyOriginalIsDeleted()
+    {
+        var dir = MakeTree();
+        var locked = Path.Combine(dir, "a.txt");
+        var session = NewVault().Begin(Plan(dir));
+        SweepManifest? seenBeforeDelete = null;
+        FileStream? hold = null;
+        session.BeforeDelete = () =>
+        {
+            seenBeforeDelete = SweepManifest.Load(ManifestFileOf(session.Manifest));
+            hold = new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None);
+        };
+
+        RemovalResult result;
+        try { result = session.Quarantine(dir, 1); }
+        finally { hold?.Dispose(); }
+
+        Assert.True(result.Succeeded);
+        var before = seenBeforeDelete!.Entries.Single();
+        Assert.Equal(SweepEntryStatus.Quarantined, before.Status);
+        Assert.Equal("0000.wsq", before.Archive);
+        Assert.Equal(64, before.Sha256!.Length);
+        Assert.True(File.Exists(locked));
+        Assert.Contains(locked, SweepManifest.Load(ManifestFileOf(session.Manifest))!.Entries.Single().SkippedFiles);
+    }
+
+    [Fact]
+    public void FileChangedAfterArchivingIsNotDeleted()
+    {
+        var dir = MakeTree();
+        var grown = Path.Combine(dir, "sub", "b.bin");
+        var touched = Path.Combine(dir, "sub", "deep", "c.txt");
+        var session = NewVault().Begin(Plan(dir));
+        session.BeforeDelete = () =>
+        {
+            File.AppendAllText(grown, "added later");
+            File.SetLastWriteTimeUtc(touched, new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        };
+
+        var result = session.Quarantine(dir, 1);
+
+        Assert.True(result.Succeeded);
+        Assert.True(File.Exists(grown));
+        Assert.True(File.Exists(touched));
+        Assert.False(File.Exists(Path.Combine(dir, "a.txt")));
+        var entry = session.Manifest.Entries.Single();
+        Assert.Contains(grown, entry.SkippedFiles);
+        Assert.Contains(touched, entry.SkippedFiles);
+    }
+
+    [Fact]
+    public void SecondBeginWithTheSameIdThrowsAndKeepsTheFirstSweep()
+    {
+        var dir = MakeTree();
+        var vault = NewVault();
+        var manifest = Plan(dir);
+        var session = vault.Begin(manifest);
+        session.Quarantine(dir, 1);
+        session.Complete();
+
+        Assert.Throws<InvalidOperationException>(() => vault.Begin(new SweepManifest { Id = manifest.Id, Source = "clean" }));
+
+        Assert.Equal(1, vault.Restore(manifest.Id).Restored);
+        Assert.True(File.Exists(Path.Combine(dir, "a.txt")));
+    }
+
+    [Fact]
+    public void ExistingArchiveFileIsNeitherOverwrittenNorDeleted()
+    {
+        var dir = MakeTree();
+        var session = NewVault().Begin(Plan(dir));
+        var foreign = Path.Combine(SweepFolder(session.Manifest), "0000.wsq");
+        File.WriteAllText(foreign, "somebody else");
+
+        var result = session.Quarantine(dir, 1);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("somebody else", File.ReadAllText(foreign));
+        Assert.True(File.Exists(Path.Combine(dir, "a.txt")));
+    }
+
+    [Fact]
+    public void AlreadySweptEntryIsRefusedWithoutChange()
+    {
+        var dir = MakeTree();
+        var session = NewVault().Begin(Plan(dir));
+        session.Quarantine(dir, 1);
+        var entry = session.Manifest.Entries.Single();
+        var sha = entry.Sha256;
+
+        var again = session.Quarantine(dir, 1);
+
+        Assert.False(again.Succeeded);
+        Assert.Equal("Already swept", again.FailureReason);
+        Assert.Equal(SweepEntryStatus.Quarantined, entry.Status);
+        Assert.Equal(sha, entry.Sha256);
+        Assert.Equal("0000.wsq", entry.Archive);
+    }
+
+    private void WriteHostileArchive(SweepManifest manifest, string entryName)
+    {
+        var key = ProtectedData.Unprotect(File.ReadAllBytes(Path.Combine(_vaultRoot, "vault.key")), null, DataProtectionScope.CurrentUser);
+        var archive = Path.Combine(SweepFolder(manifest), "0000.wsq");
+        using (var aes = Aes.Create())
+        {
+            aes.Key = key;
+            aes.GenerateIV();
+            using var file = new FileStream(archive, FileMode.CreateNew);
+            file.Write(aes.IV);
+            using var crypto = new CryptoStream(file, aes.CreateEncryptor(), CryptoStreamMode.Write);
+            using var gzip = new GZipStream(crypto, CompressionLevel.Fastest);
+            using var tar = new TarWriter(gzip, TarEntryFormat.Pax, leaveOpen: true);
+            tar.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, entryName) { DataStream = new MemoryStream(new byte[] { 1, 2, 3 }) });
+        }
+
+        var entry = manifest.Entries.Single();
+        entry.Status = SweepEntryStatus.Quarantined;
+        entry.Archive = "0000.wsq";
+        entry.Sha256 = SweepArchive.Sha256Hex(archive);
+        manifest.Save(ManifestFileOf(manifest));
+    }
+
+    [Theory]
+    [InlineData("../evil.txt")]
+    [InlineData("C:/evil.txt")]
+    [InlineData("a:evil.txt")]
+    public void HostileArchiveEntryIsRejectedAndWritesNothingOutsideTheTarget(string entryName)
+    {
+        var dir = MakeTree();
+        var vault = NewVault();
+        var session = vault.Begin(Plan(dir));
+        WriteHostileArchive(session.Manifest, entryName);
+
+        var result = vault.Restore(session.Manifest.Id);
+
+        Assert.Equal(0, result.Restored);
+        Assert.Equal(1, result.Failed);
+        Assert.Contains(result.Problems, p => p.StartsWith(dir));
+        Assert.False(File.Exists(Path.Combine(_root, "evil.txt")));
+        Assert.False(File.Exists(Path.Combine(dir, "evil.txt")));
+        Assert.False(File.Exists(@"C:\evil.txt"));
+        Assert.Equal(SweepEntryStatus.Quarantined, vault.List().Single().Entries.Single().Status);
+    }
+
+    [Fact]
+    public void ArchiveNameFromTheManifestMustBeAPlainWsqFileName()
+    {
+        var dir = MakeTree();
+        var vault = NewVault();
+        var session = vault.Begin(Plan(dir));
+        session.Quarantine(dir, 1);
+        session.Complete();
+        var decoy = Path.Combine(_root, "x.wsq");
+        File.WriteAllText(decoy, "decoy");
+        var onDisk = SweepManifest.Load(ManifestFileOf(session.Manifest))!;
+        onDisk.Entries[0].Archive = @"..\..\x.wsq";
+        onDisk.Save(ManifestFileOf(session.Manifest));
+
+        var result = vault.Restore(session.Manifest.Id);
+
+        Assert.Equal(1, result.Failed);
+        Assert.Contains(result.Problems, p => p.Contains("invalid archive name"));
+        Assert.Equal("decoy", File.ReadAllText(decoy));
+        Assert.False(Directory.Exists(dir));
+        Assert.True(File.Exists(Path.Combine(SweepFolder(session.Manifest), "0000.wsq")));
+    }
+
+    [Fact]
+    public void SweepIdWithATrailingNewlineIsRejected()
+    {
+        var vault = NewVault();
+        var manifest = new SweepManifest { Id = "abcd1234", Source = "clean" };
+        vault.Begin(manifest).Complete();
+
+        Assert.Equal(new[] { "That sweep does not exist." }, vault.Restore("abcd1234\n").Problems);
+        Assert.False(vault.Delete("abcd1234\n"));
+        Assert.True(Directory.Exists(SweepFolder(manifest)));
+        Assert.Throws<ArgumentException>(() => vault.Begin(new SweepManifest { Id = "abcd1234\n", Source = "clean" }));
     }
 }
