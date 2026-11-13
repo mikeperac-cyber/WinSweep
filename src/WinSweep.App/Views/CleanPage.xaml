@@ -68,6 +68,7 @@
                         Grid.Column="1"
                         Header="Keep removals recoverable"
                         IsOn="{Binding IsUsingRecycleBin, Mode=TwoWay}"
+                        Visibility="{Binding RecycleToggleVisible, Converter={StaticResource BoolToVisibilityConverter}}"
                         VerticalAlignment="Center" />
                     <Button Grid.Column="2" Content="Scan again" Click="Scan_Click" VerticalAlignment="Center" />
                 </Grid>

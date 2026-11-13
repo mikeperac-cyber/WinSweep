@@ -24,6 +24,7 @@ public sealed partial class CleanPage : Page
                 await _viewModel.ScanAsync();
                 if (StartupOptions.DryRun)
                 {
+                    StartupOptions.DryRun = false;
                     await ShowPreviewAsync();
                 }
             };

@@ -16,7 +16,7 @@ public static class StartupOptions
     public static string? MaintenanceTaskId { get; set; }
 
     /// <summary>Show the dry-run preview as soon as the scan on the Clean page finishes; nothing is removed.</summary>
-    public static bool DryRun { get; private set; }
+    public static bool DryRun { get; set; }
 
     /// <summary>The sweep to undo as soon as the History page opens: a sweep id or "last".</summary>
     public static string? RollbackSweepId { get; set; }

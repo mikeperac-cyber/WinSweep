@@ -52,11 +52,13 @@ public sealed class HistoryViewModel : ObservableObject
 
     public void Refresh()
     {
-        LoadLists();
+        var problem = TryLoadLists();
 
-        StatusText = Records.Count == 0
-            ? "No actions have been recorded yet."
-            : $"{Records.Count} actions recorded.";
+        StatusText = problem is not null
+            ? $"The history could not be read: {problem}"
+            : Records.Count == 0
+                ? "No actions have been recorded yet."
+                : $"{Records.Count} actions recorded.";
     }
 
     /// <summary>Restores one quarantined sweep. Files that already exist are never overwritten.</summary>
@@ -74,7 +76,7 @@ public sealed class HistoryViewModel : ObservableObject
             var result = await Task.Run(() => _runner.Rollback(id));
 
             var text = result.Restored > 0 ? $"Restored {result.Restored} locations." : string.Empty;
-            if (result.Restored > 0 && result.SkippedExisting > 0)
+            if (result.SkippedExisting > 0)
             {
                 text += $" {result.SkippedExisting} files were left alone because they already exist.";
             }
@@ -84,12 +86,17 @@ public sealed class HistoryViewModel : ObservableObject
                 text += $" {result.Problems[0]}";
             }
 
-            LoadLists();
+            var listProblem = TryLoadLists();
+            if (listProblem is not null)
+            {
+                text += $" The list could not be refreshed: {listProblem}";
+            }
+
             StatusText = text.Trim().Length > 0 ? text.Trim() : "Nothing was restored.";
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            LoadLists();
+            TryLoadLists();
             StatusText = $"The restore could not finish: {e.Message}";
         }
         finally
@@ -119,29 +126,52 @@ public sealed class HistoryViewModel : ObservableObject
             return;
         }
 
-        var deleted = _runner.DeleteSweep(id);
-        LoadLists();
-        StatusText = deleted
-            ? "The sweep was deleted permanently."
-            : "That sweep could not be deleted.";
+        try
+        {
+            var deleted = _runner.DeleteSweep(id);
+            var listProblem = TryLoadLists();
+            StatusText = deleted
+                ? "The sweep was deleted permanently."
+                : "That sweep could not be deleted.";
+            if (listProblem is not null)
+            {
+                StatusText += $" The list could not be refreshed: {listProblem}";
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            StatusText = $"The sweep could not be deleted: {e.Message}";
+        }
     }
 
-    private void LoadLists()
+    /// <summary>Reloads both lists. Returns the error message when the history could not be read, otherwise null.</summary>
+    private string? TryLoadLists()
     {
-        Records.Clear();
-        foreach (var record in _log.Read(500))
+        try
         {
-            Records.Add(record);
-        }
+            Records.Clear();
+            foreach (var record in _log.Read(500))
+            {
+                Records.Add(record);
+            }
 
-        Sweeps.Clear();
-        foreach (var manifest in _runner.History())
+            Sweeps.Clear();
+            foreach (var manifest in _runner.History())
+            {
+                Sweeps.Add(ToItem(manifest));
+            }
+
+            return null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            Sweeps.Add(ToItem(manifest));
+            return e.Message;
         }
-
-        OnPropertyChanged(nameof(HasSweeps));
-        OnPropertyChanged(nameof(HasUndoableSweep));
+        finally
+        {
+            OnPropertyChanged(nameof(HasSweeps));
+            OnPropertyChanged(nameof(HasUndoableSweep));
+        }
     }
 
     private static SweepHistoryItem ToItem(SweepManifest manifest)

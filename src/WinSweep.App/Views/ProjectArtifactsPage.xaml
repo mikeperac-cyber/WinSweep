@@ -10,11 +10,13 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0" ColumnSpacing="16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -34,8 +36,21 @@
                 VerticalAlignment="Center"
                 Click="AddRoot_Click" />
 
-            <Button
+            <NumberBox
                 Grid.Column="2"
+                Header="Skip projects worked on in the last (days)"
+                Value="{Binding InactivityDays, Mode=TwoWay}"
+                Minimum="1"
+                Maximum="365"
+                SmallChange="1"
+                LargeChange="10"
+                SpinButtonPlacementMode="Inline"
+                ValidationMode="InvalidInputOverwritten"
+                Width="260"
+                VerticalAlignment="Center" />
+
+            <Button
+                Grid.Column="3"
                 Content="Scan projects"
                 VerticalAlignment="Center"
                 Click="Scan_Click"
@@ -268,7 +283,56 @@
             </Grid>
         </Grid>
 
-        <Grid Grid.Row="3" ColumnSpacing="12" Visibility="{Binding HasArtifacts, Converter={StaticResource BoolToVisibilityConverter}}">
+        <Border
+            Grid.Row="3"
+            Background="{StaticResource CardBrush}"
+            BorderBrush="{StaticResource CardStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="12"
+            Padding="16,12">
+            <StackPanel Spacing="8">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="Docker" FontWeight="SemiBold" FontSize="16" />
+                        <TextBlock Text="{Binding DockerStatusText}" Opacity="0.62" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button
+                        Grid.Column="1"
+                        Content="Check Docker"
+                        Click="CheckDocker_Click"
+                        VerticalAlignment="Center"
+                        IsEnabled="{Binding CanUseDocker}" />
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding DockerItems}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="0,6" ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Opacity="0.7">
+                                    <TextBlock Text="{Binding Count}" />
+                                    <TextBlock Text="item(s)" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding Reclaimable}" Opacity="0.7" VerticalAlignment="Center" />
+                                <Button Grid.Column="3" Content="Prune" Tag="{Binding Kind}" Click="PruneDocker_Click" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="4" ColumnSpacing="12" Visibility="{Binding HasArtifacts, Converter={StaticResource BoolToVisibilityConverter}}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

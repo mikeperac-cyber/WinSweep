@@ -13,8 +13,10 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
 {
     private readonly AppSettings _settings;
     private readonly OperationLog _log;
-    private readonly ProjectArtifactScanner _scanner = new();
+    private readonly DockerScanner _docker = new();
     private bool _isBusy;
+    private bool _isDockerBusy;
+    private string _dockerStatusText = "Check what Docker could reclaim. Nothing is removed until you press Prune.";
     private bool _hasScanned;
     private string _statusText = "Choose project folders to look for rebuildable output.";
     private string _progressText = string.Empty;
@@ -26,6 +28,7 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
         _log = log;
         Roots = new ObservableCollection<string>(GetRoots(settings));
         Artifacts = new ObservableCollection<ProjectArtifact>();
+        DockerItems = new ObservableCollection<DockerItem>();
 
         _statusText = Roots.Count > 0
             ? "Ready to check these folders. Nothing is removed until you review and confirm it."
@@ -34,6 +37,25 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
 
     public ObservableCollection<string> Roots { get; }
     public ObservableCollection<ProjectArtifact> Artifacts { get; }
+    public ObservableCollection<DockerItem> DockerItems { get; }
+
+    /// <summary>Days a project must have been idle before its build output is offered. Kept between 1 and 365.</summary>
+    public int InactivityDays
+    {
+        get => _settings.ProjectInactivityDays;
+        set
+        {
+            var clamped = Math.Clamp(value, 1, 365);
+            if (clamped != _settings.ProjectInactivityDays)
+            {
+                _settings.ProjectInactivityDays = clamped;
+                _settings.Save();
+            }
+
+            // Raised even when unchanged so the box snaps back from an out-of-range entry.
+            OnPropertyChanged(nameof(InactivityDays));
+        }
+    }
 
     public bool IsBusy
     {
@@ -43,6 +65,7 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
             if (SetProperty(ref _isBusy, value))
             {
                 OnPropertyChanged(nameof(CanScan));
+                OnPropertyChanged(nameof(CanUseDocker));
                 OnPropertyChanged(nameof(EmptyStateVisible));
                 OnPropertyChanged(nameof(ResultsVisible));
             }
@@ -63,6 +86,16 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
     }
 
     public bool CanScan => Roots.Count > 0 && !IsBusy;
+
+    /// <summary>Docker work has its own flag so the project scan screen does not flip while docker.exe runs.</summary>
+    public bool CanUseDocker => !IsBusy && !_isDockerBusy;
+    public bool HasDockerItems => DockerItems.Count > 0;
+
+    public string DockerStatusText
+    {
+        get => _dockerStatusText;
+        private set => SetProperty(ref _dockerStatusText, value);
+    }
     public bool EmptyStateVisible => !HasScanned && !IsBusy;
     public bool ResultsVisible => HasScanned && !IsBusy;
     public bool HasArtifacts => Artifacts.Count > 0;
@@ -192,7 +225,8 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
         {
             var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
             var roots = Roots.ToList();
-            var result = await Task.Run(() => _scanner.Scan(
+            var scanner = new ProjectArtifactScanner(projectInactivity: TimeSpan.FromDays(InactivityDays));
+            var result = await Task.Run(() => scanner.Scan(
                 roots,
                 progress => dispatcher.TryEnqueue(() =>
                 {
@@ -279,7 +313,7 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
             var runner = new SweepRunner(_log, _settings);
             return await Task.Run(() => runner.Preview("purge", targets));
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             StatusText = $"The preview could not be built: {e.Message}";
             return null;
@@ -305,7 +339,7 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
                 var targets = SelectedTargets();
                 session = await Task.Run(() => runner.BeginAsync("purge", targets));
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
             {
                 StatusText = e.Message;
                 return null;
@@ -367,6 +401,67 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Asks Docker what it could reclaim. Read-only.</summary>
+    public async Task CheckDockerAsync()
+    {
+        if (!CanUseDocker)
+        {
+            return;
+        }
+
+        SetDockerBusy(true);
+        try
+        {
+            await LoadDockerAsync();
+        }
+        finally
+        {
+            SetDockerBusy(false);
+        }
+    }
+
+    /// <summary>Prunes one kind of Docker leftover, checks again and shows the outcome. The page asks the user first.</summary>
+    public async Task PruneDockerAsync(DockerItem item)
+    {
+        if (!CanUseDocker)
+        {
+            return;
+        }
+
+        SetDockerBusy(true);
+        DockerStatusText = $"Pruning {item.Name.ToLowerInvariant()}...";
+        try
+        {
+            var result = await _docker.PruneAsync(item, _log, Guid.NewGuid().ToString("N")[..8]);
+            await LoadDockerAsync();
+            DockerStatusText = result.Message;
+        }
+        finally
+        {
+            SetDockerBusy(false);
+        }
+    }
+
+    private async Task LoadDockerAsync()
+    {
+        DockerStatusText = "Asking Docker...";
+        var (items, unavailable) = await _docker.ScanAsync();
+        DockerItems.Clear();
+        foreach (var item in items)
+        {
+            DockerItems.Add(item);
+        }
+
+        OnPropertyChanged(nameof(HasDockerItems));
+        DockerStatusText = unavailable ?? (items.Count == 0 ? "Docker has nothing to reclaim." : "Prune removes this Docker data permanently.");
+    }
+
+    private void SetDockerBusy(bool value)
+    {
+        _isDockerBusy = value;
+        OnPropertyChanged(nameof(CanUseDocker));
+    }
+
     private List<SweepTarget> SelectedTargets() => Artifacts
         .Where(a => a.IsSelected)
         .Select(a => new SweepTarget(a.Path, $"{a.ProjectName}\\{a.Name}", "Project build output", a.SizeBytes))
@@ -404,21 +499,22 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (settings.ProjectScanRootsConfigured || roots.Count > 0)
+        if (settings.ProjectScanRootsConfigured)
         {
             return roots;
         }
 
-        // Suggest only conventional source-code folders. Do not scan Documents,
-        // Desktop, Downloads, OneDrive, or the whole profile without the user's say-so.
+        // Suggestions only: they fill the editable list and nothing is scanned until the user presses scan.
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var suggestions = new[] { "source", "Projects", "workspace", "code", "repos", "GitHub" }
+        var suggestions = new[]
+            {
+                "source", "Projects", "workspace", "code", "repos", "GitHub",
+                @"sourceepos", "dev", "Documents"
+            }
             .Select(name => Path.Combine(profile, name))
-            .Where(Directory.Exists)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .Where(Directory.Exists);
 
-        return suggestions;
+        return roots.Concat(suggestions).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private static string BuildResultSummary(ProjectArtifactScanResult result)

@@ -63,6 +63,42 @@ public sealed partial class ProjectArtifactsPage : Page
         _viewModel.ClearSelection();
     }
 
+    private async void CheckDocker_Click(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.CheckDockerAsync();
+    }
+
+    private async void PruneDocker_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string kind })
+        {
+            return;
+        }
+
+        var item = _viewModel.DockerItems.FirstOrDefault(i => i.Kind == kind);
+        if (item is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = $"Prune {item.Name}?",
+            Content = new TextBlock { Text = "Docker deletes these permanently. This cannot be undone from WinSweep.", TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = "Prune",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        await _viewModel.PruneDockerAsync(item);
+    }
+
     private async void Preview_Click(object sender, RoutedEventArgs e)
     {
         var manifest = await _viewModel.PreviewAsync();

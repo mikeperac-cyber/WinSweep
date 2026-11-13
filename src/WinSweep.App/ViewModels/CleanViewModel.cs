@@ -77,6 +77,9 @@ public sealed class CleanViewModel : ObservableObject
         }
     }
 
+    /// <summary>The Recycle Bin choice has no effect while the quarantine vault is on, so the page hides it.</summary>
+    public bool RecycleToggleVisible => !_settings.UseQuarantineVault;
+
     public string RemoveButtonText => _settings.UseQuarantineVault
         ? "Move selected to quarantine"
         : IsUsingRecycleBin
@@ -170,7 +173,7 @@ public sealed class CleanViewModel : ObservableObject
             var runner = new SweepRunner(_log, _settings);
             return await Task.Run(() => runner.Preview("clean", targets));
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             StatusText = $"The preview could not be built: {e.Message}";
             return null;
@@ -197,7 +200,7 @@ public sealed class CleanViewModel : ObservableObject
                 var targets = SelectedTargets();
                 session = await Task.Run(() => runner.BeginAsync("clean", targets));
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
             {
                 StatusText = e.Message;
                 return null;
