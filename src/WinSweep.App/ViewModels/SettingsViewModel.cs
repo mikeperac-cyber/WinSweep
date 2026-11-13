@@ -40,6 +40,52 @@ public sealed class SettingsViewModel : ObservableObject
         }
     }
 
+    public bool UseQuarantineVault
+    {
+        get => _settings.UseQuarantineVault;
+        set
+        {
+            if (_settings.UseQuarantineVault != value)
+            {
+                _settings.UseQuarantineVault = value;
+                _settings.Save();
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public bool SnapshotBeforeSweep
+    {
+        get => _settings.SnapshotBeforeSweep;
+        set
+        {
+            if (_settings.SnapshotBeforeSweep != value)
+            {
+                _settings.SnapshotBeforeSweep = value;
+                _settings.Save();
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    /// <summary>A double because NumberBox.Value is one; always stored as a whole number of days from 1 to 90.</summary>
+    public double VaultRetentionDays
+    {
+        get => _settings.VaultRetentionDays;
+        set
+        {
+            // A cleared NumberBox reports NaN; keep the old value rather than saving nonsense.
+            var days = double.IsNaN(value) ? _settings.VaultRetentionDays : (int)Math.Clamp(Math.Round(value), 1, 90);
+            if (_settings.VaultRetentionDays != days)
+            {
+                _settings.VaultRetentionDays = days;
+                _settings.Save();
+            }
+
+            OnPropertyChanged();
+        }
+    }
+
     public bool MeasureAppSizes
     {
         get => _settings.MeasureAppSizes;

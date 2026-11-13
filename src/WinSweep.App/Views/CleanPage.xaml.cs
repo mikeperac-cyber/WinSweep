@@ -19,7 +19,28 @@ public sealed partial class CleanPage : Page
 
         if (StartupOptions.AutoScan)
         {
-            Loaded += async (_, _) => await _viewModel.ScanAsync();
+            Loaded += async (_, _) =>
+            {
+                await _viewModel.ScanAsync();
+                if (StartupOptions.DryRun)
+                {
+                    await ShowPreviewAsync();
+                }
+            };
+        }
+    }
+
+    private async void Preview_Click(object sender, RoutedEventArgs e)
+    {
+        await ShowPreviewAsync();
+    }
+
+    private async Task ShowPreviewAsync()
+    {
+        var manifest = await _viewModel.PreviewAsync();
+        if (manifest is not null)
+        {
+            await SweepPreview.ShowAsync(XamlRoot, manifest);
         }
     }
 
@@ -42,9 +63,7 @@ public sealed partial class CleanPage : Page
             Title = "Remove the selected locations?",
             Content = new TextBlock
             {
-                Text = _viewModel.IsUsingRecycleBin
-                    ? $"{selected} locations will be moved to the Recycle Bin, so you can still recover them."
-                    : $"{selected} locations will be deleted permanently. This cannot be undone."
+                Text = $"{selected} locations will be {_viewModel.RemovalModeText}"
             },
             PrimaryButtonText = "Remove",
             CloseButtonText = "Cancel",

@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Media;
 using WinSweep.App.Views;
 using WinSweep.Core.Logging;
 using WinSweep.Core.Settings;
+using WinSweep.Core.Sweep;
 using Windows.UI;
 
 namespace WinSweep.App;
@@ -37,6 +38,19 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = false;
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "WinSweep.ico"));
 
+        // Old quarantined sweeps are deleted in the background; a failure here must never stop the app opening.
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                new SweepRunner(_log, _settings).PurgeExpired();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Nothing to report; the purge is tried again on the next launch.
+            }
+        });
+
         SelectPage(string.IsNullOrWhiteSpace(initialPage) ? "Status" : initialPage);
     }
 
@@ -64,7 +78,7 @@ public sealed partial class MainWindow : Window
             "Artifacts" => new ProjectArtifactsPage(_settings, _log),
             "Optimize" => new MaintenancePage(_log),
             "Analyze" => new DiskPage(),
-            "History" => new HistoryPage(_log),
+            "History" => new HistoryPage(_log, _settings),
             "Settings" => new SettingsPage(_settings),
             _ => new OverviewPage()
         };

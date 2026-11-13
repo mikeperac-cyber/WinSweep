@@ -272,11 +272,17 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="{Binding SelectedSummary}" VerticalAlignment="Center" Opacity="0.68" />
             <Button
                 Grid.Column="1"
-                Content="Move selected to Recycle Bin"
+                Content="Preview (dry run)"
+                Click="Preview_Click"
+                IsEnabled="{Binding SelectedCount, Converter={StaticResource PositiveIntToBooleanConverter}}" />
+            <Button
+                Grid.Column="2"
+                Content="{Binding RemoveButtonText}"
                 Click="Remove_Click"
                 IsEnabled="{Binding SelectedCount, Converter={StaticResource PositiveIntToBooleanConverter}}"
                 Style="{StaticResource PrimaryActionButtonStyle}" />

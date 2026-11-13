@@ -35,7 +35,7 @@
                     HorizontalAlignment="Center" />
                 <TextBlock Text="{Binding StatusText}" Opacity="0.58" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" />
                 <Button Content="Scan your PC" Click="Scan_Click" HorizontalAlignment="Center" Style="{StaticResource PrimaryActionButtonStyle}" />
-                <TextBlock Text="Removals go to the Recycle Bin by default." FontSize="12" Opacity="0.48" HorizontalAlignment="Center" />
+                <TextBlock Text="Preview any cleanup with a dry run before you remove anything." FontSize="12" Opacity="0.48" HorizontalAlignment="Center" />
             </StackPanel>
 
             <StackPanel
@@ -106,9 +106,11 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="{Binding TotalSizeText}" VerticalAlignment="Center" Opacity="0.72" />
-            <Button Grid.Column="1" Content="{Binding RemoveButtonText}" Click="Remove_Click" Style="{StaticResource PrimaryActionButtonStyle}" />
+            <Button Grid.Column="1" Content="Preview (dry run)" Click="Preview_Click" />
+            <Button Grid.Column="2" Content="{Binding RemoveButtonText}" Click="Remove_Click" Style="{StaticResource PrimaryActionButtonStyle}" />
         </Grid>
     </Grid>
 </Page>

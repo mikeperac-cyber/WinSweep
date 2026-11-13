@@ -5,6 +5,7 @@ using WinSweep.Core.Models;
 using WinSweep.Core.Safety;
 using WinSweep.Core.Scanning;
 using WinSweep.Core.Settings;
+using WinSweep.Core.Sweep;
 
 namespace WinSweep.App.ViewModels;
 
@@ -92,7 +93,20 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
 
     public string SelectedSummary => SelectedCount == 0
         ? "Nothing selected"
-        : $"{SelectedCount} selected · {ByteSizeFormatter.Format(SelectedBytes)} can be moved to the Recycle Bin";
+        : $"{SelectedCount} selected · {ByteSizeFormatter.Format(SelectedBytes)} can be {(_settings.UseQuarantineVault ? "moved to the quarantine vault" : "moved to the Recycle Bin")}";
+
+    public string RemoveButtonText => _settings.UseQuarantineVault ? "Move selected to quarantine" : "Move selected to Recycle Bin";
+
+    /// <summary>Title and text for the confirmation dialog, which depend on where removed folders go.</summary>
+    public string ConfirmTitle => _settings.UseQuarantineVault
+        ? "Move these build artifacts to the quarantine vault?"
+        : "Move these build artifacts to the Recycle Bin?";
+
+    public string ConfirmText => _settings.UseQuarantineVault
+        ? $"{SelectedCount} verified, inactive folder(s) ({ByteSizeFormatter.Format(SelectedBytes)}) will be moved to the quarantine vault. You can undo this from History for {VaultDays} days."
+        : $"{SelectedCount} verified, inactive folder(s) ({ByteSizeFormatter.Format(SelectedBytes)}) will be moved to the Recycle Bin. You can restore them later if a project still needs them.";
+
+    private int VaultDays => Math.Max(1, _settings.VaultRetentionDays);
 
     public void AddRoot(string path)
     {
@@ -250,6 +264,28 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
         NotifySelectionChanged();
     }
 
+    /// <summary>Dry run: builds and saves the manifest for the selected folders and changes nothing.</summary>
+    public async Task<SweepManifest?> PreviewAsync()
+    {
+        var targets = SelectedTargets();
+        if (targets.Count == 0)
+        {
+            StatusText = "Select at least one verified artifact.";
+            return null;
+        }
+
+        try
+        {
+            var runner = new SweepRunner(_log, _settings);
+            return await Task.Run(() => runner.Preview("purge", targets));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            StatusText = $"The preview could not be built: {e.Message}";
+            return null;
+        }
+    }
+
     public async Task<ProjectArtifactCleanupResult?> RemoveSelectedAsync()
     {
         var selected = Artifacts.Where(a => a.IsSelected).ToList();
@@ -262,18 +298,65 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var service = new ProjectArtifactService(_log, _settings);
-            var runId = Guid.NewGuid().ToString("N")[..8];
-            var result = await Task.Run(() => service.Execute(selected, runId));
+            SweepSession? session;
+            try
+            {
+                var runner = new SweepRunner(_log, _settings);
+                var targets = SelectedTargets();
+                session = await Task.Run(() => runner.BeginAsync("purge", targets));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                StatusText = e.Message;
+                return null;
+            }
+
+            var service = session is null
+                ? new ProjectArtifactService(_log, _settings)
+                : new ProjectArtifactService(_log, _settings, session.Quarantine, OperationAction.Quarantined);
+            var runId = session?.Manifest.Id ?? Guid.NewGuid().ToString("N")[..8];
+
+            ProjectArtifactCleanupResult result;
+            string? saveProblem = null;
+            try
+            {
+                result = await Task.Run(() => service.Execute(selected, runId));
+            }
+            finally
+            {
+                try
+                {
+                    session?.Complete();
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    saveProblem = e.Message;
+                }
+            }
 
             foreach (var artifact in selected)
             {
                 Artifacts.Remove(artifact);
             }
 
+            var destination = session is null ? "the Recycle Bin" : "the quarantine vault";
             StatusText = result.FailedCount > 0
-                ? $"Moved {result.RecycledCount} folder(s) ({ByteSizeFormatter.Format(result.BytesReclaimed)}) to the Recycle Bin; {result.FailedCount} could not be moved."
-                : $"Moved {result.RecycledCount} folder(s) ({ByteSizeFormatter.Format(result.BytesReclaimed)}) to the Recycle Bin.";
+                ? $"Moved {result.RecycledCount} folder(s) ({ByteSizeFormatter.Format(result.BytesReclaimed)}) to {destination}; {result.FailedCount} could not be moved."
+                : $"Moved {result.RecycledCount} folder(s) ({ByteSizeFormatter.Format(result.BytesReclaimed)}) to {destination}.";
+
+            if (session is not null)
+            {
+                StatusText += $" Undo it from History within {VaultDays} days.";
+                if (_settings.SnapshotBeforeSweep && session.Manifest.Snapshot is { Succeeded: false } snapshot)
+                {
+                    StatusText += $" {snapshot.Message}";
+                }
+            }
+
+            if (saveProblem is not null)
+            {
+                StatusText += $" The sweep record could not be saved: {saveProblem}";
+            }
 
             NotifySelectionChanged();
             return result;
@@ -283,6 +366,11 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
             IsBusy = false;
         }
     }
+
+    private List<SweepTarget> SelectedTargets() => Artifacts
+        .Where(a => a.IsSelected)
+        .Select(a => new SweepTarget(a.Path, $"{a.ProjectName}\\{a.Name}", "Project build output", a.SizeBytes))
+        .ToList();
 
     private void Artifact_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {

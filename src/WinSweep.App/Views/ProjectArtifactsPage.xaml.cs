@@ -63,6 +63,15 @@ public sealed partial class ProjectArtifactsPage : Page
         _viewModel.ClearSelection();
     }
 
+    private async void Preview_Click(object sender, RoutedEventArgs e)
+    {
+        var manifest = await _viewModel.PreviewAsync();
+        if (manifest is not null)
+        {
+            await SweepPreview.ShowAsync(XamlRoot, manifest);
+        }
+    }
+
     private async void Remove_Click(object sender, RoutedEventArgs e)
     {
         if (_viewModel.SelectedCount == 0)
@@ -73,12 +82,9 @@ public sealed partial class ProjectArtifactsPage : Page
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Move these build artifacts to the Recycle Bin?",
-            Content = new TextBlock
-            {
-                Text = $"{_viewModel.SelectedCount} verified, inactive folder(s) ({WinSweep.Core.Models.ByteSizeFormatter.Format(_viewModel.SelectedBytes)}) will be moved to the Recycle Bin. You can restore them later if a project still needs them."
-            },
-            PrimaryButtonText = "Move to Recycle Bin",
+            Title = _viewModel.ConfirmTitle,
+            Content = new TextBlock { Text = _viewModel.ConfirmText },
+            PrimaryButtonText = "Move",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close
         };
