@@ -53,7 +53,7 @@ if (-not $SkipTests) {
 Write-Host "`nBuilding the app ($Configuration)..." -ForegroundColor Cyan
 $target = if ($Publish) { "Publish" } else { "Build" }
 
-$properties = @("-t:$target", "-p:Configuration=$Configuration", "-p:Platform=x64", "-v:m", "-nologo")
+$properties = @("-restore", "-t:$target", "-p:Configuration=$Configuration", "-p:Platform=x64", "-v:m", "-nologo")
 if ($PackageAsMsix) {
     $properties += "-p:PackageAsMsix=true"
 }

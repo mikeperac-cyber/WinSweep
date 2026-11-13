@@ -64,7 +64,8 @@ public sealed partial class CleanPage : Page
             Title = "Remove the selected locations?",
             Content = new TextBlock
             {
-                Text = $"{selected} locations will be {_viewModel.RemovalModeText}"
+                Text = $"{selected} locations will be {_viewModel.RemovalModeText}",
+                TextWrapping = TextWrapping.Wrap
             },
             PrimaryButtonText = "Remove",
             CloseButtonText = "Cancel",

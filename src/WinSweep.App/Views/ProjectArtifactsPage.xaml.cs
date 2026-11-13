@@ -119,7 +119,7 @@ public sealed partial class ProjectArtifactsPage : Page
         {
             XamlRoot = XamlRoot,
             Title = _viewModel.ConfirmTitle,
-            Content = new TextBlock { Text = _viewModel.ConfirmText },
+            Content = new TextBlock { Text = _viewModel.ConfirmText, TextWrapping = TextWrapping.Wrap },
             PrimaryButtonText = "Move",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close
