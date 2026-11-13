@@ -107,6 +107,15 @@ public static class CleanupCatalog
         },
         new()
         {
+            Id = "amd-shaders",
+            Name = "AMD shader cache",
+            Category = "Graphics",
+            Description = "Compiled shaders that the AMD driver rebuilds on demand.",
+            PathTemplate = "%LOCALAPPDATA%\\AMD\\DxCache",
+            MinimumAgeDays = 7
+        },
+        new()
+        {
             Id = "nvidia-gl-cache",
             Name = "NVIDIA OpenGL cache",
             Category = "Graphics",

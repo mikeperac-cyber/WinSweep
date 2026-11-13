@@ -80,6 +80,24 @@ public sealed class CleanupScanner
             onFound?.Invoke(candidate);
         });
 
+        try
+        {
+            foreach (var game in GameRedistScanner.Scan())
+            {
+                if (settings.IsProtected(game.Path))
+                {
+                    continue;
+                }
+
+                candidates.Add(game);
+                onFound?.Invoke(game);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            // A game launcher that cannot be read contributes nothing.
+        }
+
         return candidates
             .OrderByDescending(c => c.SizeBytes)
             .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
