@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
 using WinSweep.Core.Cleanup;
 using WinSweep.Core.Logging;
 using WinSweep.Core.Models;
@@ -21,6 +23,48 @@ public sealed class ArtifactTree : IDisposable
         var marker = Path.Combine(Project, "package.json");
         File.WriteAllText(marker, "{\"name\":\"fixture\"}");
         File.SetLastWriteTimeUtc(marker, DateTime.UtcNow.AddDays(-90)); // An idle project, so inactivity does not hold fixtures back.
+    }
+
+    private readonly List<string> _deniedDirectories = new();
+
+    /// <summary>Makes <paramref name="directory"/> impossible to list until restored; returns false if the ACL cannot be set.</summary>
+    public static bool TryDenyListing(string directory, ICollection<string> deniedDirectories)
+    {
+        try
+        {
+            var info = new DirectoryInfo(directory);
+            var security = info.GetAccessControl();
+            security.AddAccessRule(new FileSystemAccessRule(
+                WindowsIdentity.GetCurrent().User!, FileSystemRights.ListDirectory, AccessControlType.Deny));
+            info.SetAccessControl(security);
+            deniedDirectories.Add(directory);
+            return true;
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    public bool DenyListing(string directory) => TryDenyListing(directory, _deniedDirectories);
+
+    public static void RestoreListing(IEnumerable<string> deniedDirectories)
+    {
+        foreach (var directory in deniedDirectories)
+        {
+            try
+            {
+                var info = new DirectoryInfo(directory);
+                var security = info.GetAccessControl();
+                security.RemoveAccessRule(new FileSystemAccessRule(
+                    WindowsIdentity.GetCurrent().User!, FileSystemRights.ListDirectory, AccessControlType.Deny));
+                info.SetAccessControl(security);
+            }
+            catch (Exception e) when (e is UnauthorizedAccessException or IOException)
+            {
+                // Best effort: Dispose tolerates what is left.
+            }
+        }
     }
 
     public string AddSource(string relative, DateTime lastWriteUtc)
@@ -52,6 +96,7 @@ public sealed class ArtifactTree : IDisposable
 
     public void Dispose()
     {
+        RestoreListing(_deniedDirectories);
         try
         {
             if (Directory.Exists(Root))
@@ -64,7 +109,7 @@ public sealed class ArtifactTree : IDisposable
                 Directory.Delete(Root, recursive: true);
             }
         }
-        catch (IOException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // Test residue must not fail unrelated cases.
         }
@@ -177,20 +222,6 @@ public class ProjectArtifactScannerTests
     }
 
     [Fact]
-    public void HoldsBuildOutputWhenProjectActivityCannotBeMeasured()
-    {
-        using var tree = new ArtifactTree();
-        File.Delete(Path.Combine(tree.Project, "package.json"));
-        File.WriteAllText(Path.Combine(tree.Project, "App.vbproj"), "<Project />"); // A marker, but not a measured source file.
-        tree.CreateArtifact("node_modules", DateTime.UtcNow.AddDays(-60));
-
-        var artifact = Assert.Single(InactivityScanner(TimeSpan.FromDays(30)).Scan(new[] { tree.Root }).Artifacts);
-
-        Assert.False(artifact.IsSelected);
-        Assert.Equal("This project's recent activity could not be verified, so its build output is kept.", artifact.BlockedReason);
-    }
-
-    [Fact]
     public void HoldsBuildOutputWhenTheLastGitCommitIsRecent()
     {
         if (RunGit(Path.GetTempPath(), "--version") != 0)
@@ -210,6 +241,40 @@ public class ProjectArtifactScannerTests
 
         Assert.False(artifact.IsSelected);
         Assert.Contains("worked on within the last 30 days", artifact.BlockedReason);
+    }
+
+    [Fact]
+    public void HoldsBuildOutputWhenAProjectFolderCannotBeRead()
+    {
+        using var tree = new ArtifactTree();
+        tree.CreateArtifact("node_modules", DateTime.UtcNow.AddDays(-60));
+        Directory.CreateDirectory(Path.Combine(tree.Project, "locked"));
+        if (!tree.DenyListing(Path.Combine(tree.Project, "locked")))
+        {
+            return; // The ACL could not be set on this machine.
+        }
+
+        var artifact = Assert.Single(InactivityScanner(TimeSpan.FromDays(30)).Scan(new[] { tree.Root }).Artifacts);
+
+        Assert.False(artifact.IsSelected);
+        Assert.Equal("This project's recent activity could not be verified, so its build output is kept.", artifact.BlockedReason);
+    }
+
+    [Fact]
+    public void RevalidateMeasuresProjectActivityAgain()
+    {
+        using var tree = new ArtifactTree();
+        tree.CreateArtifact("node_modules", DateTime.UtcNow.AddDays(-60));
+        var source = tree.AddSource(@"src\index.ts", DateTime.UtcNow.AddDays(-45));
+        var scanner = InactivityScanner(TimeSpan.FromDays(30));
+        var artifact = Assert.Single(scanner.Scan(new[] { tree.Root }).Artifacts);
+        Assert.True(artifact.IsSelected);
+
+        File.SetLastWriteTimeUtc(source, DateTime.UtcNow);
+        var verified = scanner.Revalidate(artifact);
+
+        Assert.False(verified.IsSelected);
+        Assert.Contains("worked on within the last 30 days", verified.BlockedReason);
     }
 
     private static int RunGit(string workingDirectory, params string[] args)

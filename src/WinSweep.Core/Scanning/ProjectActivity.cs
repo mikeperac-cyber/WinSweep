@@ -3,47 +3,51 @@ using WinSweep.Core.Safety;
 
 namespace WinSweep.Core.Scanning;
 
-/// <summary>Estimates when a project was last worked on, from Git history and source file times.</summary>
+/// <summary>Estimates when a project was last worked on, from Git history and file write times.</summary>
 public static class ProjectActivity
 {
-    private const int MaxFiles = 20000;
-    private static readonly TimeSpan WalkBudget = TimeSpan.FromSeconds(2);
+    private const int DefaultMaxFiles = 20000;
+    private static readonly TimeSpan DefaultWalkBudget = TimeSpan.FromSeconds(2);
 
     private static readonly HashSet<string> SkipDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".git", ".svn", ".hg", ".vs", ".idea", "vendor", "packages", "Pods"
-    };
-
-    private static readonly HashSet<string> SourceExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".cs", ".fs", ".vb", ".go", ".java",
-        ".kt", ".c", ".cc", ".cpp", ".h", ".hpp", ".swift", ".rb", ".php", ".html", ".css", ".scss",
-        ".vue", ".svelte", ".xaml", ".sql", ".sh", ".ps1", ".json", ".toml", ".yaml", ".yml",
-        ".csproj", ".fsproj", ".sln"
+        ".git", ".svn", ".hg"
     };
 
     /// <summary>
-    /// The newest of: the last Git commit, and the newest last-write time of a source file outside
-    /// build output. Null when neither could be established (or the source walk ran out of budget),
+    /// The newest of: the last Git commit, and the newest last-write time of any file outside
+    /// build output. Null when that could not be established (nothing found, a folder could not be
+    /// read, the walk ran out of budget, or the commit time of an existing repo could not be read),
     /// which callers must treat as "active".
     /// </summary>
     public static DateTime? LastActivityUtc(string projectRoot, CancellationToken cancellationToken = default)
     {
-        var (source, complete) = WalkSources(projectRoot, cancellationToken);
+        var (source, complete) = WalkSources(projectRoot, DefaultMaxFiles, DefaultWalkBudget, cancellationToken);
         if (!complete)
         {
             return null; // An unfinished walk may have missed a newer file, so an old commit proves nothing.
         }
 
         var commit = LastCommitUtc(projectRoot);
-        return commit is null ? source : source is null || commit > source ? commit : source;
+        if (commit is null)
+        {
+            // A repo whose history cannot be read is unknown; only a repo with no commits yet is judged by its files.
+            if (!IsGitRepository(projectRoot))
+            {
+                return source;
+            }
+
+            var anyCommit = RunGit(projectRoot, "rev-list", "-n", "1", "--all");
+            return anyCommit is not null && anyCommit.Trim().Length == 0 ? source : null;
+        }
+
+        return source is null || commit > source ? commit : source;
     }
 
     /// <summary>The last Git commit time, or null: not a repo, no commits, git missing, or slower than 1 s.</summary>
     public static DateTime? LastCommitUtc(string projectRoot)
     {
-        var marker = Path.Combine(projectRoot, ".git");
-        if (!Directory.Exists(marker) && !File.Exists(marker))
+        if (!IsGitRepository(projectRoot))
         {
             return null;
         }
@@ -64,13 +68,29 @@ public static class ProjectActivity
         }
     }
 
-    /// <summary>The newest source file write time outside build output, or null when none or over budget.</summary>
-    public static DateTime? LatestSourceWriteUtc(string projectRoot, CancellationToken cancellationToken = default) =>
-        WalkSources(projectRoot, cancellationToken) is { Complete: true } walk ? walk.Latest : null;
+    /// <summary>
+    /// The newest write time of any file outside build output, or null when there is none, a folder
+    /// could not be read, or the file/time budget ran out.
+    /// </summary>
+    public static DateTime? LatestSourceWriteUtc(
+        string projectRoot,
+        CancellationToken cancellationToken = default,
+        int maxFiles = DefaultMaxFiles,
+        TimeSpan? budget = null) =>
+        WalkSources(projectRoot, maxFiles, budget ?? DefaultWalkBudget, cancellationToken) is { Complete: true } walk
+            ? walk.Latest
+            : null;
 
-    private static (DateTime? Latest, bool Complete) WalkSources(string projectRoot, CancellationToken cancellationToken)
+    private static bool IsGitRepository(string projectRoot)
     {
-        var deadline = DateTimeOffset.UtcNow + WalkBudget;
+        var marker = Path.Combine(projectRoot, ".git");
+        return Directory.Exists(marker) || File.Exists(marker);
+    }
+
+    private static (DateTime? Latest, bool Complete) WalkSources(
+        string projectRoot, int maxFiles, TimeSpan budget, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + budget;
         var pending = new Stack<string>();
         var latest = (DateTime?)null;
         var files = 0;
@@ -102,11 +122,11 @@ public static class ProjectActivity
                             pending.Push(entry.FullName);
                         }
                     }
-                    else if (++files > MaxFiles)
+                    else if (++files > maxFiles)
                     {
                         return (null, false);
                     }
-                    else if (SourceExtensions.Contains(entry.Extension) || ProjectArtifactScanner.ProjectMarkers.Contains(entry.Name))
+                    else
                     {
                         var written = entry.LastWriteTimeUtc;
                         if (latest is null || written > latest)
@@ -118,7 +138,7 @@ public static class ProjectActivity
             }
             catch (Exception e) when (e is UnauthorizedAccessException or IOException)
             {
-                // Unreadable directory: skipped.
+                return (null, false); // An unreadable folder may hold newer files: unknown, not skipped.
             }
         }
 

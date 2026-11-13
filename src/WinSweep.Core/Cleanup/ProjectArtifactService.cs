@@ -38,7 +38,7 @@ public sealed class ProjectArtifactService
         _scanner = new ProjectArtifactScanner(
             scanBudget: TimeSpan.FromSeconds(5),
             artifactBudget: TimeSpan.FromSeconds(2),
-            projectInactivity: TimeSpan.FromDays(Math.Max(1, settings.ProjectInactivityDays)));
+            projectInactivity: TimeSpan.FromDays(Math.Clamp(settings.ProjectInactivityDays, 1, 36500)));
     }
 
     public ProjectArtifactCleanupResult Execute(
