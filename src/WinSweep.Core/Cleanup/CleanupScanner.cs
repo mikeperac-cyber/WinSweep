@@ -80,6 +80,7 @@ public sealed class CleanupScanner
             onFound?.Invoke(candidate);
         });
 
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             foreach (var game in GameRedistScanner.Scan())
@@ -93,7 +94,7 @@ public sealed class CleanupScanner
                 onFound?.Invoke(game);
             }
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or System.Security.SecurityException)
         {
             // A game launcher that cannot be read contributes nothing.
         }

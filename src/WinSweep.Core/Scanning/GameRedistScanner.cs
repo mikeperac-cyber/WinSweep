@@ -21,25 +21,33 @@ public static class GameRedistScanner
     {
         var found = new List<CleanupCandidate>();
 
-        if (Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) is string steamPath &&
-            steamPath.Length > 0)
+        try
         {
-            steamPath = steamPath.Replace('/', '\\');
-            var libraries = new List<string> { steamPath };
-            try
+            if (Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) is string steamPath &&
+                steamPath.Length > 0)
             {
-                var vdf = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
-                if (File.Exists(vdf))
+                steamPath = steamPath.Replace('/', '\\');
+                var libraries = new List<string> { steamPath };
+                try
                 {
-                    libraries.AddRange(ReadSteamLibraries(File.ReadAllText(vdf)));
+                    var vdf = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
+                    if (File.Exists(vdf))
+                    {
+                        libraries.AddRange(ReadSteamLibraries(File.ReadAllText(vdf)));
+                    }
                 }
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-                // Use the main Steam folder alone.
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    // Use the main Steam folder alone.
+                }
+
+                found.AddRange(FindSteamOrphans(libraries.Distinct(StringComparer.OrdinalIgnoreCase)));
             }
 
-            found.AddRange(FindSteamOrphans(libraries.Distinct(StringComparer.OrdinalIgnoreCase)));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or System.Security.SecurityException)
+        {
+            // Steam contributes nothing when its location cannot be read.
         }
 
         found.AddRange(FindEpicOrphans(Path.Combine(
@@ -79,10 +87,18 @@ public static class GameRedistScanner
                 foreach (var manifest in manifests)
                 {
                     var match = InstallDir.Match(File.ReadAllText(manifest));
-                    if (match.Success)
+                    if (!match.Success)
                     {
-                        installed.Add(match.Groups[1].Value);
+                        installed.Clear(); // a manifest we cannot read could be any installed game
+                        break;
                     }
+
+                    installed.Add(match.Groups[1].Value);
+                }
+
+                if (installed.Count == 0)
+                {
+                    continue;
                 }
 
                 foreach (var game in Directory.GetDirectories(common))
@@ -105,36 +121,43 @@ public static class GameRedistScanner
     /// <summary>Finds redistributable folders next to Epic games that no launcher manifest claims.</summary>
     public static IReadOnlyList<CleanupCandidate> FindEpicOrphans(string manifestsDirectory)
     {
-        var found = new List<CleanupCandidate>();
+        var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
             if (!Directory.Exists(manifestsDirectory))
             {
-                return found;
+                return Array.Empty<CleanupCandidate>();
             }
 
-            var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in Directory.GetFiles(manifestsDirectory, "*.item"))
             {
-                try
+                using var document = JsonDocument.Parse(File.ReadAllText(item));
+                if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                    !document.RootElement.TryGetProperty("InstallLocation", out var location) ||
+                    location.ValueKind != JsonValueKind.String ||
+                    string.IsNullOrWhiteSpace(location.GetString()))
                 {
-                    using var document = JsonDocument.Parse(File.ReadAllText(item));
-                    if (document.RootElement.ValueKind == JsonValueKind.Object &&
-                        document.RootElement.TryGetProperty("InstallLocation", out var location) &&
-                        location.ValueKind == JsonValueKind.String &&
-                        !string.IsNullOrWhiteSpace(location.GetString()))
-                    {
-                        installed.Add(Path.GetFullPath(location.GetString()!).TrimEnd('\\'));
-                    }
+                    return Array.Empty<CleanupCandidate>(); // an unreadable manifest must not make a game look orphaned
                 }
-                catch (Exception e) when (e is JsonException or ArgumentException or NotSupportedException)
-                {
-                    // Skip a damaged manifest.
-                }
-            }
 
-            foreach (var parent in installed.Select(Path.GetDirectoryName).Where(p => !string.IsNullOrEmpty(p)).Distinct(StringComparer.OrdinalIgnoreCase))
+                installed.Add(Path.GetFullPath(location.GetString()!).TrimEnd('\\'));
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or JsonException)
+        {
+            return Array.Empty<CleanupCandidate>();
+        }
+
+        var found = new List<CleanupCandidate>();
+        foreach (var parent in installed.Select(Path.GetDirectoryName).Where(p => !string.IsNullOrEmpty(p)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
             {
+                if (PathGuard.IsRoot(parent!))
+                {
+                    continue; // never walk a whole drive
+                }
+
                 foreach (var game in Directory.GetDirectories(parent!))
                 {
                     if (!installed.Contains(game.TrimEnd('\\')))
@@ -143,10 +166,10 @@ public static class GameRedistScanner
                     }
                 }
             }
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            // Skip what cannot be read.
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                // One missing or unreadable drive does not end the scan.
+            }
         }
 
         return found;
@@ -156,6 +179,11 @@ public static class GameRedistScanner
     private static IEnumerable<CleanupCandidate> FindRedists(string gameFolder)
     {
         var hits = new List<string>();
+        if (PathGuard.IsReparsePoint(gameFolder))
+        {
+            return Array.Empty<CleanupCandidate>();
+        }
+
         try
         {
             foreach (var child in Directory.GetDirectories(gameFolder).Where(d => !PathGuard.IsReparsePoint(d)))

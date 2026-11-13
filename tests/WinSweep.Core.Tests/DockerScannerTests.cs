@@ -38,6 +38,15 @@ public class DockerScannerTests
     }
 
     [Fact]
+    public void BuildCacheWithoutReclaimableTextIsNotOffered()
+    {
+        var df = "{\"Active\":\"0\",\"Reclaimable\":\"\",\"TotalCount\":\"3\",\"Type\":\"Build Cache\"}\n" +
+                 "{\"Active\":\"0\",\"TotalCount\":\"3\",\"Type\":\"Build Cache\"}";
+
+        Assert.Empty(DockerScanner.Parse(df, ""));
+    }
+
+    [Fact]
     public void IgnoresGarbageAndEmptyInput()
     {
         Assert.Empty(DockerScanner.Parse("", ""));

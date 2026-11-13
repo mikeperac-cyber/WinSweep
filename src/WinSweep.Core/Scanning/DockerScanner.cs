@@ -53,7 +53,7 @@ public sealed class DockerScanner
                 case "Containers" when unused > 0:
                     items.Add(new DockerItem("containers", "Stopped containers", unused, reclaimable));
                     break;
-                case "Build Cache" when !reclaimable.StartsWith("0B", StringComparison.Ordinal):
+                case "Build Cache" when reclaimable.Length > 0 && !reclaimable.StartsWith("0B", StringComparison.Ordinal):
                     items.Add(new DockerItem("build-cache", "Unused build cache", unused, reclaimable));
                     break;
             }
