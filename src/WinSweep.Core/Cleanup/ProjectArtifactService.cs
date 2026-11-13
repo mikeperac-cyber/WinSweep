@@ -22,16 +22,19 @@ public sealed class ProjectArtifactService
     private readonly OperationLog _log;
     private readonly AppSettings _settings;
     private readonly Func<string, long, RemovalResult> _recycle;
+    private readonly OperationAction _recycledAction;
     private readonly ProjectArtifactScanner _scanner;
 
     public ProjectArtifactService(
         OperationLog log,
         AppSettings settings,
-        Func<string, long, RemovalResult>? recycle = null)
+        Func<string, long, RemovalResult>? recycle = null,
+        OperationAction recycledAction = OperationAction.Recycled)
     {
         _log = log;
         _settings = settings;
         _recycle = recycle ?? RecycleBin.Send;
+        _recycledAction = recycledAction;
         _scanner = new ProjectArtifactScanner(
             scanBudget: TimeSpan.FromSeconds(5),
             artifactBudget: TimeSpan.FromSeconds(2));
@@ -98,7 +101,9 @@ public sealed class ProjectArtifactService
             {
                 recycled++;
                 bytes += result.BytesReclaimed;
-                Log(artifact, runId, OperationAction.Recycled, "Moved to the Recycle Bin", result.BytesReclaimed);
+                Log(artifact, runId, _recycledAction,
+                    _recycledAction == OperationAction.Quarantined ? "Moved to the quarantine vault" : "Moved to the Recycle Bin",
+                    result.BytesReclaimed);
             }
             else
             {

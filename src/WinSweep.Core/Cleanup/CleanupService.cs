@@ -24,11 +24,21 @@ public sealed class CleanupService
 {
     private readonly OperationLog _log;
     private readonly AppSettings _settings;
+    private readonly Func<string, long, RemovalResult>? _remove;
+    private readonly OperationAction _removedAction;
 
-    public CleanupService(OperationLog log, AppSettings settings)
+    /// <param name="remove">Replaces the Recycle Bin / permanent delete, for example the quarantine vault.</param>
+    /// <param name="removedAction">What a successful <paramref name="remove"/> is logged as.</param>
+    public CleanupService(
+        OperationLog log,
+        AppSettings settings,
+        Func<string, long, RemovalResult>? remove = null,
+        OperationAction removedAction = OperationAction.Removed)
     {
         _log = log;
         _settings = settings;
+        _remove = remove;
+        _removedAction = removedAction;
     }
 
     public CleanupResult Execute(
@@ -89,9 +99,11 @@ public sealed class CleanupService
                 continue;
             }
 
-            var result = _settings.UseRecycleBin
-                ? RecycleBin.Send(candidate.Path, candidate.SizeBytes)
-                : RecycleBin.DeletePermanently(candidate.Path, candidate.SizeBytes);
+            var result = _remove is not null
+                ? _remove(candidate.Path, candidate.SizeBytes)
+                : _settings.UseRecycleBin
+                    ? RecycleBin.Send(candidate.Path, candidate.SizeBytes)
+                    : RecycleBin.DeletePermanently(candidate.Path, candidate.SizeBytes);
 
             if (result.Succeeded)
             {
@@ -101,7 +113,9 @@ public sealed class CleanupService
                 {
                     Command = "clean",
                     RunId = runId,
-                    Action = _settings.UseRecycleBin ? OperationAction.Recycled : OperationAction.Removed,
+                    Action = _remove is not null
+                        ? _removedAction
+                        : _settings.UseRecycleBin ? OperationAction.Recycled : OperationAction.Removed,
                     Path = candidate.Path,
                     Detail = candidate.Name,
                     SizeBytes = result.BytesReclaimed

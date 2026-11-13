@@ -501,4 +501,47 @@ public class QuarantineVaultTests : IDisposable
         Assert.True(Directory.Exists(SweepFolder(manifest)));
         Assert.Throws<ArgumentException>(() => vault.Begin(new SweepManifest { Id = "abcd1234\n", Source = "clean" }));
     }
+
+    [Fact]
+    public void FailureSavingTheIndexKeepsTheOriginalsAndDropsTheArchive()
+    {
+        var dir = MakeTree();
+        var session = NewVault().Begin(Plan(dir));
+        // Holding the temp file the manifest is written through makes every save fail with an IOException.
+        // (The catch is widened to any Exception; no seam exists to make the save throw another type.)
+        using var hold = new FileStream(ManifestFileOf(session.Manifest) + ".tmp", FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+
+        var result = session.Quarantine(dir, 1);
+
+        Assert.False(result.Succeeded);
+        Assert.StartsWith("The sweep record could not be saved", result.FailureReason);
+        Assert.True(File.Exists(Path.Combine(dir, "a.txt")));
+        Assert.True(File.Exists(Path.Combine(dir, "sub", "b.bin")));
+        Assert.Empty(Directory.GetFiles(SweepFolder(session.Manifest), "*.wsq"));
+        var entry = session.Manifest.Entries.Single();
+        Assert.Equal(SweepEntryStatus.Failed, entry.Status);
+        Assert.Null(entry.Archive);
+        Assert.Null(entry.Sha256);
+        Assert.Equal(0, entry.FilesArchived);
+    }
+
+    [Fact]
+    public void PermissionsAreNotReappliedWhenFilesWereLeftAlone()
+    {
+        var dir = MakeTree();
+        var vault = NewVault();
+        var session = vault.Begin(Plan(dir));
+        session.Quarantine(dir, 1);
+        session.Complete();
+        var onDisk = SweepManifest.Load(ManifestFileOf(session.Manifest))!;
+        onDisk.Entries[0].AclSddl = "not an sddl string";
+        onDisk.Save(ManifestFileOf(session.Manifest));
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "a.txt"), "newer content");
+
+        var result = vault.Restore(session.Manifest.Id);
+
+        Assert.Equal(1, result.SkippedExisting);
+        Assert.Empty(result.Problems);
+    }
 }

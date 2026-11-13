@@ -12,6 +12,15 @@ public sealed class AppSettings
     /// <summary>Remove to the Recycle Bin instead of deleting permanently.</summary>
     public bool UseRecycleBin { get; set; } = true;
 
+    /// <summary>Move swept items to the encrypted quarantine vault so a sweep can be undone. Takes precedence over the Recycle Bin.</summary>
+    public bool UseQuarantineVault { get; set; } = true;
+
+    /// <summary>Days a quarantined sweep is kept before it is deleted for good.</summary>
+    public int VaultRetentionDays { get; set; } = 7;
+
+    /// <summary>Try to create a Windows shadow copy before a sweep, when running as administrator.</summary>
+    public bool SnapshotBeforeSweep { get; set; } = true;
+
     /// <summary>Minimum age in days before a cache target becomes eligible.</summary>
     public int MinimumCacheAgeDays { get; set; } = 1;
 

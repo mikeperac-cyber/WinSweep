@@ -211,7 +211,7 @@ public sealed class QuarantineVault
             return e.Message;
         }
 
-        if (entry.AclSddl is not null)
+        if (entry.AclSddl is not null && leftAlone == 0)
         {
             try
             {
@@ -470,8 +470,9 @@ public sealed class SweepSession
         {
             Manifest.Save(QuarantineVault.ManifestFile(_folder));
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e)
         {
+            // Any failure, not only IO: an index that is not on disk makes the archive unrestorable.
             DeleteQuietly(archivePath);
             entry.Archive = null;
             entry.Sha256 = null;

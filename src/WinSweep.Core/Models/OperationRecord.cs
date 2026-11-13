@@ -8,7 +8,9 @@ public enum OperationAction
     Uninstalled,
     Completed,
     Skipped,
-    Failed
+    Failed,
+    Quarantined,
+    Restored
 }
 
 /// <summary>One line of the operation history.</summary>
