@@ -509,7 +509,7 @@ public sealed class ProjectArtifactsViewModel : ObservableObject
         var suggestions = new[]
             {
                 "source", "Projects", "workspace", "code", "repos", "GitHub",
-                @"sourceepos", "dev", "Documents"
+                @"source\repos", "dev", "Documents"
             }
             .Select(name => Path.Combine(profile, name))
             .Where(Directory.Exists);
