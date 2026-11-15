@@ -28,7 +28,15 @@
 
                     <ToggleSwitch
                         Header="Take a Windows snapshot before a sweep (administrator only)"
-                        IsOn="{Binding SnapshotBeforeSweep, Mode=TwoWay}" />
+                        IsOn="{Binding SnapshotBeforeSweep, Mode=TwoWay}"
+                        Visibility="{Binding CanUseSnapshots, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <TextBlock
+                        Text="Windows snapshots need administrator rights, which the packaged app cannot request. The quarantine vault still lets you undo a sweep."
+                        Opacity="0.6"
+                        FontSize="12"
+                        TextWrapping="Wrap"
+                        Visibility="{Binding CanUseSnapshots, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverse}" />
 
                     <NumberBox
                         Header="Keep quarantined files for (days)"

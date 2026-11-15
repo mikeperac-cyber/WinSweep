@@ -34,4 +34,12 @@ public static class AppEnvironment
     /// an identity and cannot elevate, so administrator tasks are unavailable.
     /// </summary>
     public static bool IsStoreBuild => IsPackagedApp;
+
+    /// <summary>
+    /// True when a pre-sweep volume snapshot can be taken. A shadow copy needs
+    /// administrator rights, which a packaged installation (Store or sideloaded) cannot
+    /// request, so snapshots are unavailable there. This is the single source of truth
+    /// for the capability; the UI and the sweep runner both read it so they cannot drift.
+    /// </summary>
+    public static bool SupportsVolumeSnapshots => !IsStoreBuild;
 }

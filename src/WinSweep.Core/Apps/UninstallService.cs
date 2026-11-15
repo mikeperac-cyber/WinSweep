@@ -2,6 +2,7 @@ using System.Diagnostics;
 using WinSweep.Core.Logging;
 using WinSweep.Core.Models;
 using WinSweep.Core.Safety;
+using WinSweep.Core.Settings;
 using WinSweep.Core.Services;
 
 namespace WinSweep.Core.Apps;
@@ -15,6 +16,9 @@ public sealed record UninstallOutcome(bool Succeeded, int? ExitCode, string Mess
 /// </summary>
 public sealed class UninstallService
 {
+    /// <summary>Reason reported when a leftover folder is on the user's protected list.</summary>
+    public const string ProtectedMessage = "Protected by your settings";
+
     private readonly OperationLog _log;
 
     public UninstallService(OperationLog log)
@@ -124,6 +128,57 @@ public sealed class UninstallService
             Path = path,
             Detail = result.Succeeded ? "Install folder moved to the Recycle Bin" : result.FailureReason ?? "Unknown failure",
             SizeBytes = result.Succeeded ? sizeBytes : 0
+        });
+
+        return result;
+    }
+
+    /// <summary>
+    /// Moves one leftover folder to the Recycle Bin after checking the user's protected
+    /// paths and the safety guard. Logging and the protection rule live here so every
+    /// caller gets the same behaviour and the rule can be tested without a window.
+    /// </summary>
+    public RemovalResult RemoveLeftover(string path, long sizeBytes, AppSettings settings, string runId)
+    {
+        if (settings.IsProtected(path))
+        {
+            _log.Append(new OperationRecord
+            {
+                Command = "uninstall",
+                RunId = runId,
+                Action = OperationAction.Skipped,
+                Path = path,
+                Detail = ProtectedMessage
+            });
+
+            return RemovalResult.Failed(ProtectedMessage);
+        }
+
+        var verdict = PathGuard.Evaluate(path);
+        if (!verdict.Allowed)
+        {
+            _log.Append(new OperationRecord
+            {
+                Command = "uninstall",
+                RunId = runId,
+                Action = OperationAction.Skipped,
+                Path = path,
+                Detail = verdict.Reason
+            });
+
+            return RemovalResult.Failed(verdict.Reason);
+        }
+
+        var result = RecycleBin.Send(path, sizeBytes);
+
+        _log.Append(new OperationRecord
+        {
+            Command = "uninstall",
+            RunId = runId,
+            Action = result.Succeeded ? OperationAction.Recycled : OperationAction.Failed,
+            Path = path,
+            Detail = result.Succeeded ? "Leftover moved to the Recycle Bin" : result.FailureReason ?? "Unknown failure",
+            SizeBytes = result.Succeeded ? result.BytesReclaimed : 0
         });
 
         return result;

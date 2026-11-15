@@ -68,6 +68,9 @@ public sealed class SettingsViewModel : ObservableObject
         }
     }
 
+    /// <summary>True when administrator shadow copies are supported on this installation.</summary>
+    public bool CanUseSnapshots => WinSweep.Core.Platform.AppEnvironment.SupportsVolumeSnapshots;
+
     /// <summary>A double because NumberBox.Value is one; always stored as a whole number of days from 1 to 90.</summary>
     public double VaultRetentionDays
     {

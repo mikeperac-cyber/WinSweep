@@ -26,11 +26,12 @@ public class SweepRunnerTests : IDisposable
         try { Directory.Delete(_root, true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
-    private SweepRunner NewRunner(string? vaultRoot = null) => new(
+    private SweepRunner NewRunner(string? vaultRoot = null, Func<bool>? snapshotsSupported = null) => new(
         _log, _settings, new QuarantineVault(vaultRoot ?? Path.Combine(_root, "vault")),
         isElevated: () => false,
         analyzer: new RiskAnalyzer(Array.Empty<InstalledApp>(), Array.Empty<string>()),
-        dryRunManifestPath: _dryRunPath);
+        dryRunManifestPath: _dryRunPath,
+        snapshotsSupported: snapshotsSupported);
 
     private string MakeCache(string name)
     {
@@ -98,6 +99,30 @@ public class SweepRunnerTests : IDisposable
         var session = await NewRunner().BeginAsync("clean", new[] { Target(MakeCache("cache")) });
 
         Assert.Null(session!.Manifest.Snapshot);
+    }
+
+    [Fact]
+    public async Task SnapshotIsSkippedWhenTheInstallationDoesNotSupportIt()
+    {
+        _settings.SnapshotBeforeSweep = true;
+
+        var session = await NewRunner(snapshotsSupported: () => false)
+            .BeginAsync("clean", new[] { Target(MakeCache("cache")) });
+
+        Assert.Null(session!.Manifest.Snapshot);
+    }
+
+    [Fact]
+    public async Task SupportedInstallationStillRecordsTheNotElevatedSnapshot()
+    {
+        _settings.SnapshotBeforeSweep = true;
+
+        var session = await NewRunner(snapshotsSupported: () => true)
+            .BeginAsync("clean", new[] { Target(MakeCache("cache")) });
+
+        var snapshot = session!.Manifest.Snapshot!;
+        Assert.False(snapshot.Attempted);
+        Assert.Equal(VolumeSnapshot.NotElevatedMessage, snapshot.Message);
     }
 
     [Fact]

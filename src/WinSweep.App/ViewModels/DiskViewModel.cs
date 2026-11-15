@@ -116,6 +116,8 @@ public sealed class DiskViewModel : ObservableObject
                     "Partial scan: the scan ran out of time before every folder was measured. The size is a lower bound.",
                 ScanStatus.Partial when result.TimedOut =>
                     $"Partial scan: the scan ran out of time and {result.UnreadablePaths.Count} paths could not be read. The size is a lower bound.",
+                ScanStatus.Partial when result.UnreadablePaths.Count == 0 =>
+                    "Partial scan: some folders could not be measured completely (depth or time limit). The size is a lower bound.",
                 ScanStatus.Partial =>
                     $"Partial scan: {result.UnreadablePaths.Count} paths could not be read. The size is a lower bound.",
                 _ => "This folder could not be read."

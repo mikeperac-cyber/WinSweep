@@ -6,11 +6,12 @@
   IgnorableNamespaces="uap rescap">
 
   <!--
-    Identity values from the Partner Center reservation. Do not change these to
-    anything else; the Store signs the package with the matching certificate.
+    Identity values from the WinSweep Partner Center reservation
+    (PFN: MikePerac.WinSweep_9hea41fqhc5ec, Store ID: 9PHB2MML1VW4).
+    Do not change these to anything else; the Store signs the package with the matching certificate.
   -->
   <Identity
-    Name="MikePerac.WinPulseStudio"
+    Name="MikePerac.WinSweep"
     Publisher="CN=4F57FA0D-0E3C-4115-91BB-AEA7447D17EF"
     Version="0.1.0.0" />
 
@@ -26,11 +27,10 @@
 
   <Dependencies>
     <!--
-      WinUI 3 needs the Windows.Universal app model family for the XAML runtime
-      to activate, even though this is a desktop app.
+      Full-trust WinUI 3 desktop apps target the Windows.Desktop device family.
     -->
     <TargetDeviceFamily
-      Name="Windows.Universal"
+      Name="Windows.Desktop"
       MinVersion="10.0.17763.0"
       MaxVersionTested="10.0.22621.0" />
   </Dependencies>

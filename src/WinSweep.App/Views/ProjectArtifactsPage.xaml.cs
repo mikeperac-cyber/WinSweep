@@ -26,8 +26,7 @@ public sealed partial class ProjectArtifactsPage : Page
     {
         var picker = new Windows.Storage.Pickers.FolderPicker();
         picker.FileTypeFilter.Add("*");
-        var windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, windowHandle);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, App.MainWindowHandle);
         var folder = await picker.PickSingleFolderAsync();
         if (folder is not null)
         {

@@ -15,6 +15,7 @@ public sealed class SweepRunner
     private readonly AppSettings _settings;
     private readonly QuarantineVault _vault;
     private readonly Func<bool> _isElevated;
+    private readonly Func<bool> _snapshotsSupported;
     private readonly string _dryRunManifestPath;
     private RiskAnalyzer? _analyzer;
 
@@ -24,12 +25,14 @@ public sealed class SweepRunner
         QuarantineVault? vault = null,
         Func<bool>? isElevated = null,
         RiskAnalyzer? analyzer = null,
-        string? dryRunManifestPath = null)
+        string? dryRunManifestPath = null,
+        Func<bool>? snapshotsSupported = null)
     {
         _log = log;
         _settings = settings;
         _vault = vault ?? new QuarantineVault();
         _isElevated = isElevated ?? CleanupScanner.IsElevated;
+        _snapshotsSupported = snapshotsSupported ?? (() => Platform.AppEnvironment.SupportsVolumeSnapshots);
         _analyzer = analyzer;
         _dryRunManifestPath = dryRunManifestPath ?? SweepPlanner.DryRunManifestPath;
     }
@@ -54,7 +57,9 @@ public sealed class SweepRunner
 
     /// <summary>
     /// Real sweep: null when the vault is switched off. Otherwise builds the manifest, takes the snapshot
-    /// when settings.SnapshotBeforeSweep, and opens the vault session. Throws one IOException when the vault cannot be opened.
+    /// when settings.SnapshotBeforeSweep and the installation supports it (see
+    /// AppEnvironment.SupportsVolumeSnapshots; a packaged app cannot elevate, so a shadow copy would
+    /// always fail), and opens the vault session. Throws one IOException when the vault cannot be opened.
     /// </summary>
     public async Task<SweepSession?> BeginAsync(string source, IEnumerable<SweepTarget> targets,
         CancellationToken cancellationToken = default)
@@ -65,7 +70,7 @@ public sealed class SweepRunner
         }
 
         var manifest = SweepPlanner.Build(source, targets, Analyzer, dryRun: false);
-        if (_settings.SnapshotBeforeSweep)
+        if (_settings.SnapshotBeforeSweep && _snapshotsSupported())
         {
             manifest.Snapshot = await VolumeSnapshot.CreateAsync(_isElevated(), cancellationToken);
         }

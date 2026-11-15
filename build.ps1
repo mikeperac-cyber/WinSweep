@@ -4,8 +4,12 @@ Builds WinSweep.
 The WinUI 3 project needs the full MSBuild from Visual Studio, not the dotnet CLI,
 because the XAML compiler runs as an MSBuild task.
 
-    .\build.ps1                 # Debug build
-    .\build.ps1 -Configuration Release -Publish
+    .\build.ps1                                  # tests + Debug build
+    .\build.ps1 -Configuration Release -Publish  # loose build copied to artifacts\desktop
+    .\build.ps1 -Configuration Release -PackageAsMsix  # MSIX in artifacts\msix
+    .\build.ps1 -SkipTests                       # skip the test run
+
+-Publish and -PackageAsMsix produce different outputs and cannot be combined.
 #>
 param(
     [ValidateSet("Debug", "Release")]
@@ -17,6 +21,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+if ($Publish -and $PackageAsMsix) {
+    throw "Choose one output: -Publish (desktop build) or -PackageAsMsix (MSIX). They cannot be combined."
+}
 
 function Find-MSBuild {
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -51,11 +59,22 @@ if (-not $SkipTests) {
 }
 
 Write-Host "`nBuilding the app ($Configuration)..." -ForegroundColor Cyan
-$target = if ($Publish) { "Publish" } else { "Build" }
+$target = if ($Publish) { "Publish" } elseif ($PackageAsMsix) { "Rebuild" } else { "Build" }
 
 $properties = @("-restore", "-t:$target", "-p:Configuration=$Configuration", "-p:Platform=x64", "-v:m", "-nologo")
 if ($PackageAsMsix) {
+    $msixOutDir = Join-Path $root "artifacts\msix"
+    if (Test-Path $msixOutDir) {
+        Remove-Item (Join-Path $msixOutDir "*.msix") -Force -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path $msixOutDir "*.appxsym") -Force -ErrorAction SilentlyContinue
+    }
     $properties += "-p:PackageAsMsix=true"
+}
+
+$publishDir = Join-Path $root "src\WinSweep.App\bin\x64\$Configuration\net8.0-windows10.0.19041.0\win-x64\publish"
+if ($Publish -and (Test-Path $publishDir)) {
+    # Publish does not delete files that are no longer produced, so clear it first.
+    Remove-Item $publishDir -Recurse -Force
 }
 
 & $msbuild $appProject @properties
@@ -63,7 +82,17 @@ if ($LASTEXITCODE -ne 0) { throw "The build failed." }
 
 $exe = Join-Path $root "src\WinSweep.App\bin\x64\$Configuration\net8.0-windows10.0.19041.0\win-x64\WinSweep.App.exe"
 if ($Publish) {
-    $exe = Join-Path $root "src\WinSweep.App\bin\x64\$Configuration\net8.0-windows10.0.19041.0\win-x64\publish\WinSweep.App.exe"
+    if (-not (Test-Path $publishDir)) {
+        throw "The publish output was not produced at $publishDir."
+    }
+
+    $desktopDir = Join-Path $root "artifacts\desktop"
+    if (Test-Path $desktopDir) {
+        Remove-Item $desktopDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $desktopDir | Out-Null
+    Copy-Item -Path (Join-Path $publishDir "*") -Destination $desktopDir -Recurse -Force
+    $exe = Join-Path $desktopDir "WinSweep.App.exe"
 }
 
 Write-Host "`nDone. Run it with:" -ForegroundColor Green

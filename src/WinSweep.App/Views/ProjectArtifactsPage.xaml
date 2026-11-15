@@ -39,7 +39,7 @@
 
             <NumberBox
                 Grid.Column="2"
-                Header="Skip projects worked on in the last (days)"
+                Header="Skip projects active within (days)"
                 Value="{Binding InactivityDays, Mode=TwoWay}"
                 Minimum="1"
                 Maximum="365"
@@ -47,8 +47,9 @@
                 LargeChange="10"
                 SpinButtonPlacementMode="Inline"
                 ValidationMode="InvalidInputOverwritten"
-                Width="260"
-                VerticalAlignment="Center" />
+                Width="248"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="Skip projects active within this many days" />
 
             <Button
                 Grid.Column="3"
@@ -99,7 +100,8 @@
                                     MinWidth="20"
                                     Height="20"
                                     FontSize="14"
-                                    ToolTipService.ToolTip="Remove this scan folder" />
+                                    ToolTipService.ToolTip="Remove this scan folder"
+                                    AutomationProperties.Name="Remove this scan folder" />
                             </StackPanel>
                         </Border>
                     </DataTemplate>
@@ -240,17 +242,18 @@
                                         Grid.Column="0"
                                         IsChecked="{Binding IsSelected, Mode=TwoWay}"
                                         IsEnabled="{Binding BlockedReason, Converter={StaticResource NullToBooleanConverter}}"
+                                        AutomationProperties.Name="{Binding Name}"
                                         VerticalAlignment="Center"
                                         MinWidth="40" />
 
                                     <StackPanel Grid.Column="1" Spacing="3">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                                            <TextBlock Text="in" Opacity="0.45" />
+                                            <TextBlock Text="in" Opacity="0.58" />
                                             <TextBlock Text="{Binding ProjectName}" Opacity="0.75" />
                                         </StackPanel>
                                         <TextBlock Text="{Binding StateText}" Opacity="0.65" TextWrapping="Wrap" FontSize="12" />
-                                        <TextBlock Text="{Binding Path}" Opacity="0.43" TextTrimming="CharacterEllipsis" FontSize="11" />
+                                        <TextBlock Text="{Binding Path}" Opacity="0.6" TextTrimming="CharacterEllipsis" FontSize="11" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="3">

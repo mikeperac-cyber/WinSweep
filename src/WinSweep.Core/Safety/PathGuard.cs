@@ -50,7 +50,7 @@ public static class PathGuard
     /// <summary>Names of folders that hold user documents even without an extension.</summary>
     private static readonly string[] PersonalFolderNames =
     {
-        "Documents", "Desktop", "Pictures", "Videos", "Music", "Downloads", "Music",
+        "Documents", "Desktop", "Pictures", "Videos", "Music", "Downloads",
         "OneDrive", "Dropbox", "iCloudDrive"
     };
 

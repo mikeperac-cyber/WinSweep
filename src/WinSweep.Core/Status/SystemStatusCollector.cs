@@ -136,6 +136,11 @@ public sealed class SystemStatusCollector
                     continue;
                 }
 
+                if (!CountsAsActiveNetwork(adapter.NetworkInterfaceType))
+                {
+                    continue;
+                }
+
                 var statistics = adapter.GetIPStatistics();
                 networks.Add(new NetworkSnapshot(
                     adapter.Name,
@@ -152,6 +157,15 @@ public sealed class SystemStatusCollector
 
         return networks;
     }
+
+    /// <summary>
+    /// True when an adapter type should appear in the network list. Only the loopback
+    /// pseudo-adapter is excluded here; the caller separately requires OperationalStatus.Up.
+    /// Loopback is always up but is not a network the user connects through, so counting it
+    /// would make the status count disagree with what the user sees.
+    /// </summary>
+    internal static bool CountsAsActiveNetwork(NetworkInterfaceType type) =>
+        type != NetworkInterfaceType.Loopback;
 
     private static IReadOnlyList<ProcessSnapshot> CollectTopProcesses()
     {

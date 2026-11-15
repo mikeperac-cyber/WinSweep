@@ -5,8 +5,9 @@ Signs the MSIX package with a self-signed certificate and makes it installable.
     .\tools\Sign-And-Install.ps1 -SkipInstall    # sign and verify only
     .\tools\Sign-And-Install.ps1 -Uninstall      # remove the installed package
 
-The certificate lives in the current user's personal store. The private key is
-exported to artifacts\signing so the package can be signed again later.
+The certificate lives in the current user's personal store, and the private key never
+leaves it: the package is signed straight from the store by thumbprint, so no PFX or
+password is written to disk or passed on a command line.
 #>
 param(
     [string]$Artifacts = (Join-Path $PSScriptRoot "..\artifacts"),
@@ -14,18 +15,21 @@ param(
     [switch]$SkipInstall,
     [switch]$Uninstall,
     [switch]$Timestamp,
-    [switch]$Elevated,
-    [string]$Password = "winsweep-dev"
+    [switch]$Elevated
 )
 
 $ErrorActionPreference = "Stop"
+
+# Package identities to look for. WinSweep.Dev is the pre-rename sideload identity;
+# keep it so an older local install is replaced rather than left side by side.
+$appxPackageNames = @("MikePerac.WinSweep", "WinSweep.Dev")
 
 # An existing signing certificate lets the script check whether the machine already
 # trusts it, which decides if the install needs administrator rights.
 $existingCert = Get-ChildItem "Cert:\CurrentUser\My" -ErrorAction SilentlyContinue |
     Where-Object { $_.Subject -eq $Publisher } |
     Sort-Object NotAfter -Descending | Select-Object -First 1
-$script:CertificateThumbprint = $existingCert?.Thumbprint
+$script:CertificateThumbprint = if ($existingCert) { $existingCert.Thumbprint } else { $null }
 
 function Test-IsAdmin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -40,7 +44,9 @@ function Test-CertificateTrusted {
     $thumbprint = $script:CertificateThumbprint
     if (-not $thumbprint) { return $false }
 
-    foreach ($storeName in @("TrustedPeople", "Root")) {
+    # MSIX sideloading trusts the publisher through Trusted People; a machine-wide Root
+    # entry is broader than the install needs, so trust is checked there only.
+    foreach ($storeName in @("TrustedPeople")) {
         $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeName, "LocalMachine")
         $store.Open("ReadOnly")
         $found = $store.Certificates | Where-Object { $_.Thumbprint -eq $thumbprint }
@@ -60,16 +66,23 @@ if (-not $Elevated -and -not $SkipInstall -and ($Uninstall -or -not (Test-Certif
         "-ExecutionPolicy", "Bypass",
         "-File", $PSCommandPath,
         "-Elevated",
-        "-Publisher", $Publisher,
-        "-Password", $Password
+        "-Publisher", $Publisher
     )
+    # Forward the artifacts location, otherwise the elevated run reverts to its default.
+    $arguments += @("-Artifacts", $Artifacts)
     if ($SkipInstall) { $arguments += "-SkipInstall" }
     if ($Uninstall) { $arguments += "-Uninstall" }
     if ($Timestamp) { $arguments += "-Timestamp" }
 
+    # Quote every argument so a value containing a space, quote or semicolon cannot be
+    # re-parsed as extra script after elevation.
+    $quoted = $arguments | ForEach-Object {
+        if ($_ -match '[\s";]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+    }
+
     Write-Host "Requesting administrator rights for the package installation..." -ForegroundColor Cyan
     Start-Process -FilePath "powershell.exe" `
-        -ArgumentList ($arguments -join " ") `
+        -ArgumentList ($quoted -join " ") `
         -Verb RunAs `
         -Wait
     return
@@ -100,18 +113,28 @@ function Get-SdkTool {
 
 if ($Uninstall) {
     Write-Host "Removing the installed package..." -ForegroundColor Cyan
-    Get-AppxPackage -Name "WinSweep.Dev" -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
+    foreach ($packageName in $appxPackageNames) {
+        Get-AppxPackage -Name $packageName -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
+    }
 
-    Write-Host "Removing the development certificate..." -ForegroundColor Cyan
-    foreach ($storeName in @("TrustedPeople", "Root")) {
-        foreach ($scope in @("LocalMachine", "CurrentUser")) {
-            $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeName, $scope)
-            $store.Open("ReadWrite")
-            foreach ($certificate in @($store.Certificates | Where-Object { $_.Subject -eq $Publisher })) {
-                $store.Remove($certificate)
-                Write-Host "  Removed from Cert:\$scope\$storeName"
+    $otherDevApps = @(Get-AppxPackage | Where-Object { $_.Publisher -eq $Publisher -and $_.SignatureKind -eq "Developer" })
+    if ($otherDevApps.Count -gt 0) {
+        Write-Host "Keeping the development certificate for $Publisher because other local packages still use it ($($otherDevApps.Name -join ', '))." -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "Removing the development certificate..." -ForegroundColor Cyan
+        # Only the Trusted People entry this script adds is removed; a machine-wide Root
+        # entry is never created, so nothing else is touched.
+        foreach ($storeName in @("TrustedPeople")) {
+            foreach ($scope in @("LocalMachine", "CurrentUser")) {
+                $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeName, $scope)
+                $store.Open("ReadWrite")
+                foreach ($certificate in @($store.Certificates | Where-Object { $_.Subject -eq $Publisher })) {
+                    $store.Remove($certificate)
+                    Write-Host "  Removed from Cert:\$scope\$storeName"
+                }
+                $store.Close()
             }
-            $store.Close()
         }
     }
 
@@ -140,42 +163,41 @@ if (-not $cert) {
         -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3")
 }
 
-$pfxPath = Join-Path $signingDir "WinSweep.pfx"
-Write-Host "Exporting the certificate to $pfxPath" -ForegroundColor Cyan
-# A separate name: $Password is a typed string parameter and would coerce the
-# secure string back to plain text.
-$securePassword = ConvertTo-SecureString -String $Password -Force -AsPlainText
-Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $securePassword | Out-Null
-
 $signtool = Get-SdkTool "signtool.exe"
 
-# Windows only trusts a self-signed package when the publisher certificate is
-# trusted, and it has to exist before the package is checked. It goes into the
-# current user's Trusted People and Root stores, never into the machine stores.
-Write-Host "Trusting the certificate for the current user..." -ForegroundColor Cyan
-$publicKey = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfxPath, $Password)
-$publicBytes = $publicKey.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+if (-not (Test-CertificateTrusted)) {
+    Write-Host "Trusting the certificate on this machine..." -ForegroundColor Cyan
+    # Export only the public certificate; the private key stays in the current user's store.
+    $publicBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
 
-foreach ($storeName in @("TrustedPeople", "Root")) {
-    $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeName, "LocalMachine")
-    $store.Open("ReadWrite")
-    $existing = $store.Certificates | Where-Object { $_.Thumbprint -eq $cert.Thumbprint }
-    if (-not $existing) {
-        $store.Add([System.Security.Cryptography.X509Certificates.X509Certificate2]::new($publicBytes))
-        Write-Host "  Added to Cert:\LocalMachine\$storeName"
+    foreach ($storeName in @("TrustedPeople")) {
+        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeName, "LocalMachine")
+        $store.Open("ReadWrite")
+        $existing = $store.Certificates | Where-Object { $_.Thumbprint -eq $cert.Thumbprint }
+        if (-not $existing) {
+            $store.Add([System.Security.Cryptography.X509Certificates.X509Certificate2]::new($publicBytes))
+            Write-Host "  Added to Cert:\LocalMachine\$storeName"
+        }
+        $store.Close()
     }
-    $store.Close()
+}
+else {
+    Write-Host "The signing certificate is already trusted on this machine." -ForegroundColor DarkGray
 }
 
-Write-Host "Signing $($package.Name)..." -ForegroundColor Cyan
-# The timestamp is optional. A release build should use one, but the timestamp
-# chain has to be trusted on the machine that checks it, which a development
-# certificate does not need.
-$signArgs = @("sign", "/fd", "SHA256", "/f", $pfxPath, "/p", $Password)
+$signedPackagePath = Join-Path $signingDir ($package.BaseName + "-signed.msix")
+Copy-Item -Path $package.FullName -Destination $signedPackagePath -Force
+
+Write-Host "Signing $(Split-Path $signedPackagePath -Leaf) (keeping $($package.Name) unsigned for Store upload)..." -ForegroundColor Cyan
+# /sha1 selects the certificate from the current user's store, so the private key is
+# never exported and no password appears on the signtool command line. The timestamp
+# is optional: a release build should use one, but the timestamp chain has to be
+# trusted on the machine that checks it, which a development certificate does not need.
+$signArgs = @("sign", "/fd", "SHA256", "/s", "My", "/sha1", $cert.Thumbprint)
 if ($Timestamp) {
     $signArgs += @("/tr", "http://timestamp.digicert.com", "/td", "SHA256")
 }
-$signArgs += $package.FullName
+$signArgs += $signedPackagePath
 
 & $signtool @signArgs
 if ($LASTEXITCODE -ne 0) {
@@ -183,7 +205,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Verifying the signature..." -ForegroundColor Cyan
-$verifyOutput = & $signtool verify /pa /v $package.FullName 2>&1 | Out-String
+$verifyOutput = & $signtool verify /pa /v $signedPackagePath 2>&1 | Out-String
 
 if ($verifyOutput -match "Successfully Verified") {
     Write-Host "The signature verified." -ForegroundColor Green
@@ -200,10 +222,16 @@ else {
 }
 
 if ($SkipInstall) {
-    Write-Host "Signed. Skipping the install." -ForegroundColor Green
+    Write-Host "Signed package at $signedPackagePath. Skipping the install." -ForegroundColor Green
     return
 }
 
 Write-Host "Installing the package..." -ForegroundColor Cyan
-Add-AppxPackage -Path $package.FullName
+
+# ForceUpdateFromAnyVersion upgrades in place, so a failed install leaves the previously
+# installed build intact instead of removing it first. The legacy identity (if any) is
+# removed separately because it is a different package name.
+Get-AppxPackage -Name "WinSweep.Dev" -ErrorAction SilentlyContinue |
+    Remove-AppxPackage -ErrorAction SilentlyContinue
+Add-AppxPackage -Path $signedPackagePath -ForceUpdateFromAnyVersion -ForceApplicationShutdown
 Write-Host "Installed. Look for WinSweep in the Start menu." -ForegroundColor Green

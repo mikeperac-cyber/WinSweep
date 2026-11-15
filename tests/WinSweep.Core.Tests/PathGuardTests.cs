@@ -63,6 +63,23 @@ public class PathGuardTests
         Assert.False(PathGuard.LooksLikePersonalData(@"C:\Users\Someone\AppData\Local\Temp\cache.tmp"));
     }
 
+    [Theory]
+    [InlineData("Documents")]
+    [InlineData("Desktop")]
+    [InlineData("Pictures")]
+    [InlineData("Videos")]
+    [InlineData("Music")]
+    [InlineData("Downloads")]
+    [InlineData("OneDrive")]
+    [InlineData("Dropbox")]
+    [InlineData("iCloudDrive")]
+    public void EveryPersonalFolderNameCountsAsPersonalData(string folder)
+    {
+        // Each name must stay in the personal-folder list: dropping one would make that
+        // folder auto-selectable in the uninstall review.
+        Assert.True(PathGuard.LooksLikePersonalData($@"C:\Users\Someone\{folder}\Project\build\output"));
+    }
+
     [Fact]
     public void ComparesPathsCaseInsensitively()
     {

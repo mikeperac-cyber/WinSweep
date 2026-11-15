@@ -35,7 +35,7 @@
                     HorizontalAlignment="Center" />
                 <TextBlock Text="{Binding StatusText}" Opacity="0.58" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" />
                 <Button Content="Scan your PC" Click="Scan_Click" HorizontalAlignment="Center" Style="{StaticResource PrimaryActionButtonStyle}" />
-                <TextBlock Text="Preview any cleanup with a dry run before you remove anything." FontSize="12" Opacity="0.48" HorizontalAlignment="Center" />
+                <TextBlock Text="Preview any cleanup with a dry run before you remove anything." FontSize="12" Opacity="0.58" HorizontalAlignment="Center" />
             </StackPanel>
 
             <StackPanel
@@ -45,7 +45,7 @@
                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ProgressRing IsActive="{Binding IsBusy}" Width="42" Height="42" HorizontalAlignment="Center" />
                 <TextBlock Text="Looking for disposable files" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                <TextBlock Text="{Binding StatusText}" Opacity="0.68" HorizontalAlignment="Center" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding StatusText}" Opacity="0.68" HorizontalAlignment="Center" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
 
             <Grid Visibility="{Binding ResultsVisible, Converter={StaticResource BoolToVisibilityConverter}}" RowSpacing="10">
@@ -62,7 +62,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Spacing="4">
                         <TextBlock Text="Clean" FontSize="28" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding StatusText}" Opacity="0.68" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding StatusText}" Opacity="0.68" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
                     </StackPanel>
                     <ToggleSwitch
                         Grid.Column="1"
@@ -83,11 +83,11 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" MinWidth="40" />
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" MinWidth="40" AutomationProperties.Name="{Binding Name}" />
                                     <StackPanel Grid.Column="1" Spacing="3">
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
                                         <TextBlock Text="{Binding StateText}" Opacity="0.68" TextWrapping="Wrap" />
-                                        <TextBlock Text="{Binding Path}" Opacity="0.44" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Path}" Opacity="0.6" FontSize="11" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                     <TextBlock Grid.Column="2" Text="{Binding SizeDisplay}" VerticalAlignment="Center" Opacity="0.85" MinWidth="90" TextAlignment="Right" />
                                 </Grid>
@@ -110,8 +110,8 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="{Binding TotalSizeText}" VerticalAlignment="Center" Opacity="0.72" />
-            <Button Grid.Column="1" Content="Preview (dry run)" Click="Preview_Click" />
-            <Button Grid.Column="2" Content="{Binding RemoveButtonText}" Click="Remove_Click" Style="{StaticResource PrimaryActionButtonStyle}" />
+            <Button Grid.Column="1" Content="Preview (dry run)" Click="Preview_Click" IsEnabled="{Binding SelectedCount, Converter={StaticResource PositiveIntToBooleanConverter}}" />
+            <Button Grid.Column="2" Content="{Binding RemoveButtonText}" Click="Remove_Click" Style="{StaticResource PrimaryActionButtonStyle}" IsEnabled="{Binding SelectedCount, Converter={StaticResource PositiveIntToBooleanConverter}}" />
         </Grid>
     </Grid>
 </Page>

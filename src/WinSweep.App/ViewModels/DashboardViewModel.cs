@@ -34,11 +34,8 @@ public sealed class DashboardViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(HealthScoreText));
                 OnPropertyChanged(nameof(HealthSummary));
-                OnPropertyChanged(nameof(CpuText));
-                OnPropertyChanged(nameof(MemoryText));
                 OnPropertyChanged(nameof(UptimeText));
                 OnPropertyChanged(nameof(HostText));
-                OnPropertyChanged(nameof(BatteryText));
                 OnPropertyChanged(nameof(CpuValueText));
                 OnPropertyChanged(nameof(CpuDetailText));
                 OnPropertyChanged(nameof(MemoryValueText));
@@ -62,21 +59,9 @@ public sealed class DashboardViewModel : ObservableObject
         ? string.Empty
         : $"{Snapshot.HostName} · {Snapshot.OperatingSystem}";
 
-    public string CpuText => Snapshot is null || Snapshot.Cpu.LogicalProcessors == 0
-        ? "CPU --"
-        : $"CPU {Snapshot.Cpu.TotalUsagePercent:0.#}% of {Snapshot.Cpu.LogicalProcessors} logical processors";
-
-    public string MemoryText => Snapshot is null || Snapshot.Memory.TotalBytes == 0
-        ? "Memory --"
-        : $"Memory {Snapshot.Memory.UsedPercent:0.#}% of {Core.Models.ByteSizeFormatter.Format(Snapshot.Memory.TotalBytes)}";
-
     public string UptimeText => Snapshot is null
         ? string.Empty
         : $"Up {Snapshot.Uptime.Days}d {Snapshot.Uptime.Hours}h {Snapshot.Uptime.Minutes}m";
-
-    public string BatteryText => Snapshot is null || Snapshot.Batteries.Count == 0
-        ? string.Empty
-        : $"Battery {Snapshot.Batteries[0].ChargePercent}% · {Snapshot.Batteries[0].Status}";
 
     public string CpuValueText => Snapshot is null || Snapshot.Cpu.LogicalProcessors == 0
         ? "--"

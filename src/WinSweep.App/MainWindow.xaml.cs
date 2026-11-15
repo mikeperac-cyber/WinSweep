@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using WinSweep.App.Views;
@@ -38,6 +39,10 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = false;
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "WinSweep.ico"));
 
+        // The pages are laid out for a desktop-width window. Without this the default
+        // WinUI size clips the multi-column pages, so size to the design width on load.
+        RootGrid.Loaded += (_, _) => ResizeToDesignSize();
+
         // Old quarantined sweeps are deleted in the background; a failure here must never stop the app opening.
         _ = Task.Run(() =>
         {
@@ -52,6 +57,34 @@ public sealed partial class MainWindow : Window
         });
 
         SelectPage(string.IsNullOrWhiteSpace(initialPage) ? "Status" : initialPage);
+    }
+
+    /// <summary>
+    /// Resizes the window to the size the pages are designed for, scaled by the display DPI
+    /// and clamped to the monitor's work area so the action bar is never pushed off-screen.
+    /// </summary>
+    private void ResizeToDesignSize()
+    {
+        try
+        {
+            var scale = RootGrid.XamlRoot?.RasterizationScale ?? 1.0;
+            var width = (int)Math.Round(1280 * scale);
+            var height = (int)Math.Round(820 * scale);
+
+            var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+                AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Nearest);
+            if (area is not null)
+            {
+                width = Math.Min(width, area.WorkArea.Width);
+                height = Math.Min(height, area.WorkArea.Height);
+            }
+
+            AppWindow.Resize(new Windows.Graphics.SizeInt32(width, height));
+        }
+        catch (Exception e) when (e is InvalidOperationException or ArgumentException)
+        {
+            // Sizing is cosmetic; a failure here must not stop the app opening.
+        }
     }
 
     private void Navigation_Click(object sender, RoutedEventArgs e)
@@ -113,5 +146,18 @@ public sealed partial class MainWindow : Window
             button.Background = new SolidColorBrush(selected ? SelectedNavigationColor : Color.FromArgb(0, 0, 0, 0));
             button.Foreground = new SolidColorBrush(selected ? SelectedNavigationTextColor : DefaultNavigationTextColor);
         }
+
+        // History and Settings are icon buttons outside the pill; mark them the same way so the
+        // user can still see where they are on those pages.
+        foreach (var (button, page) in new[] { (HistoryNav, "History"), (SettingsNav, "Settings") })
+        {
+            var selected = string.Equals(page, pageName, StringComparison.OrdinalIgnoreCase);
+            button.Background = new SolidColorBrush(selected ? SelectedNavigationColor : Color.FromArgb(0, 0, 0, 0));
+            button.Foreground = new SolidColorBrush(selected ? SelectedNavigationTextColor : DefaultNavigationTextColor);
+        }
+
+        // Tell assistive technology which section is showing.
+        AutomationProperties.SetName(ContentFrame, pageName);
+        AutomationProperties.SetItemStatus(ContentFrame, $"Showing {pageName}");
     }
 }

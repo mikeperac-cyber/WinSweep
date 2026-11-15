@@ -95,6 +95,9 @@ public sealed class CleanViewModel : ObservableObject
 
     private int VaultDays => Math.Max(1, _settings.VaultRetentionDays);
 
+    /// <summary>How many locations are ticked. Drives the enabled state of the remove buttons.</summary>
+    public int SelectedCount => Candidates.Count(c => c.IsSelected);
+
     public string TotalSizeText
     {
         get
@@ -146,6 +149,7 @@ public sealed class CleanViewModel : ObservableObject
             HasScanned = true;
             OnPropertyChanged(nameof(HasCandidates));
             OnPropertyChanged(nameof(TotalSizeText));
+            OnPropertyChanged(nameof(SelectedCount));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -237,6 +241,8 @@ public sealed class CleanViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(HasCandidates));
+            OnPropertyChanged(nameof(SelectedCount));
+            OnPropertyChanged(nameof(TotalSizeText));
 
             if (session is not null)
             {
@@ -282,6 +288,7 @@ public sealed class CleanViewModel : ObservableObject
         if (e.PropertyName == nameof(CleanupCandidate.IsSelected))
         {
             OnPropertyChanged(nameof(TotalSizeText));
+            OnPropertyChanged(nameof(SelectedCount));
         }
     }
 }

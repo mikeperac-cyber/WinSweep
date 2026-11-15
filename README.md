@@ -3,9 +3,10 @@
 A Windows desktop app that cleans disposable files, uninstalls applications safely,
 explores disk usage, and shows machine health. Native WinUI 3, written in C#.
 
-> **Working title.** "WinSweep" is a placeholder. Rename it before you publish:
-> change the assembly name, the window title, the app data folder
-> (`%LOCALAPPDATA%\WinSweep`) and the `AppSettings.SettingsPath` constant.
+> **Product identity.** The name and Microsoft Store reservation are already in place
+> (`MikePerac.WinSweep`, PFN `MikePerac.WinSweep_9hea41fqhc5ec`). If the display name
+> ever changes, update `Package.appxmanifest` (Identity and DisplayName) together; the
+> app-data folder (`%LOCALAPPDATA%\WinSweep`) can stay as it is.
 
 ## What it does
 
@@ -122,6 +123,9 @@ App Runtime, so it needs nothing installed on the machine.
 .\build.ps1 -Configuration Release -Publish
 ```
 
+The output is copied to `artifacts\desktop\`. Run it with
+`.\artifacts\desktop\WinSweep.App.exe`.
+
 The published folder is about 226 MB, because the build is self-contained: it
 bundles .NET and the Windows App SDK so the app runs on any Windows 10 1809+ machine
 without installing a runtime.
@@ -139,22 +143,29 @@ carrying its own copy. On this machine that is `Microsoft.WindowsAppRuntime.2`.
 # Sign it with a development certificate, trust it and install it
 .\tools\Sign-And-Install.ps1
 
-# Remove the package and the certificate again
+# Remove the installed package and (unless another local package needs it) the certificate
 .\tools\Sign-And-Install.ps1 -Uninstall
 ```
 
 The signing script creates a self-signed certificate matching the manifest publisher
-(`CN=4F57FA0D-0E3C-4115-91BB-AEA7447D17EF`), adds it to
-the machine's Trusted People and Root stores (the first run asks for administrator
-rights), signs the package and installs it. `-SkipInstall` stops after signing.
+(`CN=4F57FA0D-0E3C-4115-91BB-AEA7447D17EF`), adds it to the machine's Trusted People
+store (the first run asks for administrator rights), then signs a **copy** of the
+package using the certificate in your user store. The private key is never exported and
+no password is written to disk or passed on a command line. The signed copy
+(`artifacts\signing\<name>-signed.msix`) is what gets installed; `artifacts\msix` is
+left unsigned so it stays valid for Store upload. `-SkipInstall` stops after signing
+and prints the signed path.
+
+`-Uninstall` removes the installed package and removes the development certificate,
+unless other locally installed packages still use the same publisher.
 
 Two details in the manifest are not obvious and both break the app if they are wrong:
 
 - `EntryPoint="$targetentrypoint$"`, not the application class. The generated entry
   point runs on a single-threaded apartment, and the XAML runtime refuses to start
   otherwise.
-- The manifest must name the `Windows.Universal` device family, because that is the
-  app model family the XAML runtime activates under.
+- The manifest names the `Windows.Desktop` device family, because a full-trust
+  packaged WinUI 3 desktop app activates under that family (not `Windows.Universal`).
 
 ### App assets
 
@@ -169,15 +180,19 @@ The logos and the splash screen are generated, so every size stays consistent:
 The app is structurally ready for the Microsoft Store, but a few things must be
 changed before you submit:
 
-- **Identity.** The manifest already uses the Partner Center values
-  (`MikePerac.WinPulseStudio` / `CN=4F57FA0D-0E3C-4115-91BB-AEA7447D17EF`). If you
-  reserve a different name later, update both lines in `Package.appxmanifest`.
+- **Identity.** The manifest already uses the Partner Center values for WinSweep
+  (`MikePerac.WinSweep` / `CN=4F57FA0D-0E3C-4115-91BB-AEA7447D17EF`, PFN
+  `MikePerac.WinSweep_9hea41fqhc5ec`, Store ID `9PHB2MML1VW4`). If you
+  reserve a different name later, update `Identity`, `DisplayName`/`PublisherDisplayName`
+  and this PFN/Store ID note in `Package.appxmanifest`.
 - **Do not sign the package.** Submit the unsigned MSIX from `artifacts\msix\`. The
   Store signs it with its own certificate. `tools/Sign-And-Install.ps1` is for
   sideloading on your own machine only.
 - **Elevation.** Tasks that need an administrator account are marked
   `StoreAvailable = false` and report as unavailable in a Store build. The app
-  detects a packaged installation at runtime and never tries to elevate.
+  detects a packaged installation at runtime and never tries to elevate. Because a
+  packaged app cannot elevate, pre-sweep volume snapshots are also unavailable there
+  and the snapshot toggle is hidden in Settings. This applies to a sideloaded MSIX too.
 - **Privacy policy.** Add a privacy policy URL in Partner Center. The app reads
   system information locally and sends nothing anywhere, but the Store still
   requires one.
@@ -199,8 +214,9 @@ changed before you submit:
 - The maintenance tasks are a small, fixed set. There is no registry cleaner, no
   driver updater and no "boost" mode.
 - There is no scheduler, background service or tray icon.
-- The package is signed with a development certificate. A real release needs a
-  certificate from a trusted authority and a matching publisher name.
+- The sideloaded copy is signed with a development certificate. `artifacts\msix` is
+  intentionally left unsigned for Store upload. A real release needs a certificate
+  from a trusted authority and a matching publisher name.
 
 ## Naming and licence
 
@@ -208,4 +224,3 @@ This project is an independent piece of work. It does not reuse code from the Mo
 project, which is GPL-3.0, and it does not use the Mole name or logo, which are
 trademarks. If you later copy or adapt GPL-3.0 code into this project, the whole
 project has to comply with the GPL and needs a different name and icon.
-# WinSweep

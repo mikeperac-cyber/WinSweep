@@ -42,7 +42,13 @@ public sealed class AppsViewModel : ObservableObject
     public bool IsBusy
     {
         get => _isBusy;
-        private set => SetProperty(ref _isBusy, value);
+        private set
+        {
+            if (SetProperty(ref _isBusy, value))
+            {
+                OnPropertyChanged(nameof(NoAppsMatch));
+            }
+        }
     }
 
     public string SearchText
@@ -79,6 +85,10 @@ public sealed class AppsViewModel : ObservableObject
     }
 
     public bool HasSelection => SelectedApp is not null;
+
+    /// <summary>True when a search is active but no installed app matches it.</summary>
+    public bool NoAppsMatch =>
+        !IsBusy && !string.IsNullOrWhiteSpace(SearchText) && Apps.Count == 0;
 
     /// <summary>True when the selected app came from the Microsoft Store.</summary>
     public bool SelectedAppIsStore => SelectedApp?.Source == InstallSource.WindowsStore;
@@ -230,6 +240,8 @@ public sealed class AppsViewModel : ObservableObject
         {
             Apps.Add(app);
         }
+
+        OnPropertyChanged(nameof(NoAppsMatch));
     }
 
     /// <summary>Builds the review for the selected app. Nothing is removed here.</summary>
@@ -329,48 +341,50 @@ public sealed class AppsViewModel : ObservableObject
             var service = new UninstallService(_log);
             var runId = Guid.NewGuid().ToString("N")[..8];
             int removed = 0;
+            int skipped = 0;
             long bytes = 0;
             var failures = new List<string>();
 
+            var removedItems = new List<LeftoverItem>();
             foreach (var leftover in selected)
             {
-                var result = await Task.Run(() => Core.Services.RecycleBin.Send(leftover.Path, leftover.SizeBytes));
+                // The protection check, safety guard and logging all live in Core.
+                var result = await Task.Run(() => service.RemoveLeftover(leftover.Path, leftover.SizeBytes, _settings, runId));
                 if (result.Succeeded)
                 {
                     removed++;
                     bytes += result.BytesReclaimed;
-                    _log.Append(new OperationRecord
-                    {
-                        Command = "uninstall",
-                        RunId = runId,
-                        Action = OperationAction.Recycled,
-                        Path = leftover.Path,
-                        Detail = leftover.Name,
-                        SizeBytes = result.BytesReclaimed
-                    });
+                    removedItems.Add(leftover);
+                }
+                else if (result.FailureReason == UninstallService.ProtectedMessage)
+                {
+                    skipped++;
                 }
                 else
                 {
                     failures.Add($"{leftover.Name}: {result.FailureReason}");
-                    _log.Append(new OperationRecord
-                    {
-                        Command = "uninstall",
-                        RunId = runId,
-                        Action = OperationAction.Failed,
-                        Path = leftover.Path,
-                        Detail = result.FailureReason ?? "Unknown failure"
-                    });
                 }
             }
 
-            foreach (var leftover in selected)
+            // Only drop the folders that actually left the disk. A protected or failed folder
+            // stays in the review, so the list still reflects what is on the machine.
+            foreach (var leftover in removedItems)
             {
                 Leftovers.Remove(leftover);
             }
 
-            StatusText = failures.Count > 0
-                ? $"Removed {removed} folders ({ByteSizeFormatter.Format(bytes)}); {failures.Count} could not be removed."
-                : $"Removed {removed} folders, reclaiming {ByteSizeFormatter.Format(bytes)}.";
+            var summary = new List<string> { $"Removed {removed} folders, reclaiming {ByteSizeFormatter.Format(bytes)}" };
+            if (skipped > 0)
+            {
+                summary.Add($"{skipped} left in place because they are protected (change that under Settings > Protected paths)");
+            }
+            if (failures.Count > 0)
+            {
+                summary.Add($"{failures.Count} could not be removed: {string.Join("; ", failures.Take(2))}" +
+                            (failures.Count > 2 ? $" and {failures.Count - 2} more" : string.Empty));
+            }
+
+            StatusText = string.Join(". ", summary) + ".";
 
             return StatusText;
         }

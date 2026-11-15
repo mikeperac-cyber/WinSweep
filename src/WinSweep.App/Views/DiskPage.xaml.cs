@@ -30,9 +30,8 @@ public sealed partial class DiskPage : Page
         var picker = new Windows.Storage.Pickers.FolderPicker();
         picker.FileTypeFilter.Add("*");
 
-        // The picker needs a window handle on its own thread.
-        var windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, windowHandle);
+        // The picker needs the parent window handle.
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, App.MainWindowHandle);
 
         var folder = await picker.PickSingleFolderAsync();
         if (folder is not null)

@@ -23,6 +23,7 @@
                 <TextBlock Text="{Binding StatusText}" Opacity="0.66" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <ProgressRing IsActive="{Binding IsBusy}" Width="20" Height="20" VerticalAlignment="Center" AutomationProperties.Name="Working" />
                 <Button Content="Check for updates" Click="CheckUpdates_Click" />
                 <Button Content="Open Store updates" Click="StoreUpdates_Click" ToolTipService.ToolTip="Microsoft Store apps are updated by the Store itself." />
                 <Button Content="Refresh list" Click="Reload_Click" />
@@ -76,6 +77,14 @@
                 </ListView>
             </StackPanel>
         </Border>
+
+        <TextBlock
+            Grid.Row="3"
+            Text="No apps match your search."
+            Opacity="0.65"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Visibility="{Binding NoAppsMatch, Converter={StaticResource BoolToVisibilityConverter}}" />
 
         <ListView
             Grid.Row="3"
@@ -150,10 +159,10 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" MinWidth="34" VerticalAlignment="Center" />
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" MinWidth="34" VerticalAlignment="Center" AutomationProperties.Name="{Binding Name}" />
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" />
-                                        <TextBlock Text="{Binding Reason}" Opacity="0.55" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Reason}" Opacity="0.62" FontSize="11" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                     <TextBlock Grid.Column="2" Text="{Binding SizeDisplay}" FontSize="12" Opacity="0.75" VerticalAlignment="Center" />
                                 </Grid>

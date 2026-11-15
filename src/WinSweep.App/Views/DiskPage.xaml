@@ -91,7 +91,7 @@
                                 <FontIcon Grid.Column="0" Glyph="&#xE8B7;" FontSize="14" VerticalAlignment="Center" />
                                 <StackPanel Grid.Column="1" Spacing="2">
                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Path}" Opacity="0.46" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Path}" Opacity="0.6" FontSize="11" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="2" Text="{Binding SizeDisplay}" VerticalAlignment="Center" Opacity="0.85" MinWidth="90" TextAlignment="Right" />
                             </Grid>
@@ -107,7 +107,7 @@
                                 <DataTemplate>
                                     <StackPanel Padding="0,5" Spacing="3">
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding Path}" Opacity="0.45" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Path}" Opacity="0.6" FontSize="11" TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="{Binding SizeDisplay}" Opacity="0.8" />
                                     </StackPanel>
                                 </DataTemplate>
