@@ -16,6 +16,11 @@ public sealed class AppsViewModel : ObservableObject
     private readonly AppUpdateService _updater;
     private List<InstalledApp> _allApps = new();
     private bool _isBusy;
+    private bool _isUpdating;
+    private bool _hasCheckedForUpdates;
+    private bool _canCancel;
+    private DateTimeOffset? _lastCheckedAt;
+    private CancellationTokenSource? _updatesCancellation;
     private string _searchText = string.Empty;
     private string _statusText = "Loading installed applications...";
     private InstalledApp? _selectedApp;
@@ -26,8 +31,8 @@ public sealed class AppsViewModel : ObservableObject
         _settings = settings;
         Apps = new ObservableCollection<InstalledApp>();
         Leftovers = new ObservableCollection<LeftoverItem>();
-        Updates = new ObservableCollection<AppUpdate>();
-        Updates.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUpdates));
+        Updates = new ObservableCollection<UpdateRow>();
+        Updates.CollectionChanged += (_, _) => NotifyUpdatesChanged();
         _updater = new AppUpdateService(log);
     }
 
@@ -35,9 +40,52 @@ public sealed class AppsViewModel : ObservableObject
     public ObservableCollection<LeftoverItem> Leftovers { get; }
 
     /// <summary>Apps that winget can update, filled by <see cref="CheckUpdatesAsync"/>.</summary>
-    public ObservableCollection<AppUpdate> Updates { get; }
+    public ObservableCollection<UpdateRow> Updates { get; }
 
     public bool HasUpdates => Updates.Count > 0;
+
+    /// <summary>True while at least one listed row still needs work.</summary>
+    public bool HasPendingUpdates => Updates.Any(u => u.IsPending);
+
+    /// <summary>True only when the bulk button can actually start work.</summary>
+    public bool CanUpdateAll => IsIdle && HasPendingUpdates;
+
+    /// <summary>How many listed rows still need work; drives the header and the bulk button.</summary>
+    public int PendingUpdateCount => Updates.Count(u => u.IsPending);
+
+    /// <summary>False while any work is running, so buttons disable instead of ignoring clicks.</summary>
+    public bool IsIdle => !_isBusy;
+
+    /// <summary>True only while an update (not a list load) is running.</summary>
+    public bool IsUpdating
+    {
+        get => _isUpdating;
+        private set => SetProperty(ref _isUpdating, value);
+    }
+
+    /// <summary>True while a check or an update is running and can still be stopped.</summary>
+    public bool CanCancel => _canCancel;
+
+    /// <summary>True after a check that finished cleanly with nothing to update.</summary>
+    public bool ShowNoUpdates => _hasCheckedForUpdates && !_isBusy && Updates.Count == 0;
+
+    public string UpdatesHeaderText => HasPendingUpdates
+        ? $"{PendingUpdateCount} update(s) available"
+        : "All listed apps are up to date";
+
+    public string LastCheckedText => _lastCheckedAt is null
+        ? string.Empty
+        : $"Checked {_lastCheckedAt.Value.ToLocalTime():HH:mm}";
+
+    private void NotifyUpdatesChanged()
+    {
+        OnPropertyChanged(nameof(HasUpdates));
+        OnPropertyChanged(nameof(HasPendingUpdates));
+        OnPropertyChanged(nameof(PendingUpdateCount));
+        OnPropertyChanged(nameof(ShowNoUpdates));
+        OnPropertyChanged(nameof(UpdatesHeaderText));
+        OnPropertyChanged(nameof(CanUpdateAll));
+    }
 
     public bool IsBusy
     {
@@ -47,6 +95,9 @@ public sealed class AppsViewModel : ObservableObject
             if (SetProperty(ref _isBusy, value))
             {
                 OnPropertyChanged(nameof(NoAppsMatch));
+                OnPropertyChanged(nameof(IsIdle));
+                OnPropertyChanged(nameof(ShowNoUpdates));
+                OnPropertyChanged(nameof(CanUpdateAll));
             }
         }
     }
@@ -141,55 +192,98 @@ public sealed class AppsViewModel : ObservableObject
 
         IsBusy = true;
         StatusText = "Checking for app updates...";
+        using var cancellation = new CancellationTokenSource();
+        _updatesCancellation = cancellation;
+        SetCanCancel(true);
         try
         {
-            var (updates, error) = await _updater.ListAsync();
+            var (updates, error) = await _updater.ListAsync(cancellation.Token);
+
             Updates.Clear();
             foreach (var update in updates)
             {
-                Updates.Add(update);
+                Updates.Add(new UpdateRow(update));
             }
 
-            StatusText = error ?? (updates.Count == 0
-                ? "Every app that winget knows about is up to date."
-                : $"{updates.Count} app update(s) available.");
+            _hasCheckedForUpdates = error is null;
+            _lastCheckedAt = error is null ? DateTimeOffset.UtcNow : null;
+            OnPropertyChanged(nameof(LastCheckedText));
+
+            StatusText = error
+                ?? (updates.Count == 0
+                    ? "No app updates found."
+                    : $"{updates.Count} app update(s) available.");
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "The update check was stopped.";
         }
         finally
         {
+            _updatesCancellation = null;
+            SetCanCancel(false);
             IsBusy = false;
         }
     }
 
-    /// <summary>Installs the newer version of one app.</summary>
-    public async Task UpdateAsync(AppUpdate update)
+    /// <summary>Stops a running update check or batch update.</summary>
+    public void CancelUpdates() => _updatesCancellation?.Cancel();
+
+    private void SetCanCancel(bool value)
     {
-        if (IsBusy)
+        if (_canCancel != value)
+        {
+            _canCancel = value;
+            OnPropertyChanged(nameof(CanCancel));
+        }
+    }
+
+    /// <summary>Installs the newer version of one app.</summary>
+    public async Task UpdateAsync(UpdateRow row)
+    {
+        if (IsBusy || !row.CanUpdate)
         {
             return;
         }
 
         IsBusy = true;
-        StatusText = $"Updating {update.Name}...";
+        IsUpdating = true;
+        SetRowsInteractive(false);
+        row.MarkUpdating();
+        StatusText = $"Updating {row.Name}...";
+        using var cancellation = new CancellationTokenSource();
+        _updatesCancellation = cancellation;
+        SetCanCancel(true);
         try
         {
-            var result = await _updater.UpdateAsync(update, Guid.NewGuid().ToString("N")[..8]);
+            var result = await _updater.UpdateAsync(row.Update, NewRunId(), cancellation.Token);
             if (result.Outcome == MaintenanceOutcome.Applied)
             {
-                Updates.Remove(update);
-                StatusText = $"{update.Name} was updated to {update.Available}.";
+                MarkUpdated(row);
+                StatusText = $"{row.Name} was updated to {row.Available}.";
             }
             else
             {
-                StatusText = $"{update.Name} was not updated: {result.Message}";
+                row.MarkFailed(result.Message);
+                StatusText = $"{row.Name} was not updated: {result.Message}";
             }
+        }
+        catch (OperationCanceledException)
+        {
+            row.MarkStopped();
+            StatusText = $"{row.Name} was stopped before it finished.";
         }
         finally
         {
+            _updatesCancellation = null;
+            SetCanCancel(false);
+            IsUpdating = false;
+            SetRowsInteractive(true);
             IsBusy = false;
         }
     }
 
-    /// <summary>Installs every listed update, one after another.</summary>
+    /// <summary>Installs every pending update, one after another, until done or cancelled.</summary>
     public async Task UpdateAllAsync()
     {
         if (IsBusy)
@@ -197,37 +291,146 @@ public sealed class AppsViewModel : ObservableObject
             return;
         }
 
+        var pending = Updates.Where(u => u.IsPending).ToList();
+        if (pending.Count == 0)
+        {
+            StatusText = "Nothing is waiting to be updated.";
+            return;
+        }
+
         IsBusy = true;
-        var runId = Guid.NewGuid().ToString("N")[..8];
-        var pending = Updates.ToList();
+        IsUpdating = true;
+        SetRowsInteractive(false);
+        var runId = NewRunId();
         int updated = 0, failed = 0;
+        bool cancelled = false;
+        var reasons = new List<string>();
+        using var cancellation = new CancellationTokenSource();
+        _updatesCancellation = cancellation;
+        SetCanCancel(true);
         try
         {
-            foreach (var update in pending)
+            foreach (var row in pending)
             {
-                StatusText = $"Updating {update.Name} ({updated + failed + 1} of {pending.Count})...";
-                var result = await _updater.UpdateAsync(update, runId);
+                cancellation.Token.ThrowIfCancellationRequested();
+
+                row.MarkUpdating();
+                StatusText = $"Updating {row.Name} ({updated + failed + 1} of {pending.Count})...";
+
+                var result = await _updater.UpdateAsync(row.Update, runId, cancellation.Token);
                 if (result.Outcome == MaintenanceOutcome.Applied)
                 {
-                    Updates.Remove(update);
+                    MarkUpdated(row);
                     updated++;
                 }
                 else
                 {
+                    row.MarkFailed(result.Message);
                     failed++;
+                    if (reasons.Count < 3)
+                    {
+                        reasons.Add($"{row.Name}: {result.Message}");
+                    }
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            cancelled = true;
 
-            StatusText = failed == 0
-                ? $"{updated} app(s) updated."
-                : $"{updated} app(s) updated, {failed} failed. The History page has the details.";
+            // Only the row that was running is marked stopped. The rows after it stay
+            // queued, so the user can retry them.
+            foreach (var row in pending.Where(r => r.State == UpdateState.Updating))
+            {
+                row.MarkStopped();
+            }
         }
         finally
         {
+            _updatesCancellation = null;
+            SetCanCancel(false);
+            IsUpdating = false;
+            SetRowsInteractive(true);
             IsBusy = false;
+        }
+
+        var summary = new List<string> { $"{updated} app(s) updated" };
+        if (failed > 0)
+        {
+            summary.Add($"{failed} failed ({string.Join("; ", reasons)})");
+        }
+
+        if (cancelled)
+        {
+            var notDone = pending.Count(r => r.IsPending);
+            summary.Add($"{notDone} not updated");
+        }
+
+        StatusText = string.Join(", ", summary) + (failed > 0 ? ". The History page has the details." : ".");
+    }
+
+    private static string NewRunId() => Guid.NewGuid().ToString("N")[..8];
+
+    /// <summary>Turns every row's button off or on, so a click is never silently ignored.</summary>
+    private void SetRowsInteractive(bool interactive)
+    {
+        foreach (var row in Updates)
+        {
+            row.IsInteractive = interactive;
         }
     }
 
+    /// <summary>Marks a row done and reflects the new version in the installed-app list.</summary>
+    private void MarkUpdated(UpdateRow row)
+    {
+        row.MarkUpdated();
+        ApplyUpdatedVersion(row);
+        NotifyUpdatesChanged();
+    }
+
+    /// <summary>
+    /// Replaces the installed-app entry with the version winget just installed, so the list
+    /// no longer shows the old version. The entry is matched by name, the only link winget
+    /// gives us back.
+    /// </summary>
+    private void ApplyUpdatedVersion(UpdateRow row)
+    {
+        var index = _allApps.FindIndex(a => string.Equals(a.Name, row.Name, StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+        {
+            return;
+        }
+
+        var old = _allApps[index];
+        var refreshed = new InstalledApp
+        {
+            Id = old.Id,
+            Name = old.Name,
+            Version = row.Available,
+            Publisher = old.Publisher,
+            InstallLocation = old.InstallLocation,
+            UninstallString = old.UninstallString,
+            QuietUninstallString = old.QuietUninstallString,
+            Source = old.Source,
+            SizeBytes = old.SizeBytes,
+            InstallDateUtc = old.InstallDateUtc,
+            IconKey = old.IconKey,
+            PackageFamilyName = old.PackageFamilyName
+        };
+
+        _allApps[index] = refreshed;
+
+        var shown = Apps.IndexOf(old);
+        if (shown >= 0)
+        {
+            Apps[shown] = refreshed;
+        }
+
+        if (SelectedApp?.Id == old.Id)
+        {
+            SelectedApp = refreshed;
+        }
+    }
     private void ApplyFilter(IReadOnlyList<InstalledApp>? source = null)
     {
         var all = source ?? _allApps;

@@ -1,4 +1,5 @@
 using WinSweep.Core.Apps;
+using WinSweep.Core.Maintenance;
 using Xunit;
 
 namespace WinSweep.Core.Tests;
@@ -63,5 +64,45 @@ public class AppUpdateTests
 
         var updates = AppUpdateService.ParseUpgradeTable(output);
         Assert.Equal("Good.App", Assert.Single(updates).Id);
+    }
+    [Fact]
+    public void AFailedCheckIsNotReportedAsUpToDate()
+    {
+        // A non-zero exit that printed an error must never become an all-clear.
+        var failed = MaintenanceResult.Failed("The task failed with exit code 1.", "Failed when opening source: network unreachable", 1);
+
+        var error = AppUpdateService.InterpretEmptyResult(failed);
+
+        Assert.NotNull(error);
+        Assert.Contains("network unreachable", error);
+    }
+
+    [Fact]
+    public void ANonZeroExitThatPrintedNothingMeansNothingToUpdate()
+    {
+        // winget uses a non-zero exit and no output to say everything is current.
+        var nothing = MaintenanceResult.Failed("The task failed with exit code 137.", string.Empty, 137);
+
+        Assert.Null(AppUpdateService.InterpretEmptyResult(nothing));
+    }
+
+    [Fact]
+    public void ASuccessfulEmptyTableMeansEverythingIsCurrent()
+    {
+        Assert.Null(AppUpdateService.InterpretEmptyResult(MaintenanceResult.Applied("Done.", string.Empty)));
+    }
+
+    [Fact]
+    public void AProcessThatNeverStartedNamesTheProblem()
+    {
+        var missing = MaintenanceResult.Failed("The system cannot find the file specified.");
+        var error = AppUpdateService.InterpretEmptyResult(missing);
+
+        Assert.NotNull(error);
+        Assert.Contains("winget could not be run", error);
+
+        // With no reason to show, the message still says what to install.
+        var blank = AppUpdateService.InterpretEmptyResult(MaintenanceResult.Failed(string.Empty));
+        Assert.Contains("not available", blank);
     }
 }

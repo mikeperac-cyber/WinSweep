@@ -69,6 +69,7 @@ $pages = @(
     @{ Name = "status";   Args = @("--page", "Status");   Wait = 5000 }
     @{ Name = "clean";    Args = @("--page", "Clean", "--scan"); Wait = 14000 }
     @{ Name = "apps";     Args = @("--page", "Apps");     Wait = 24000 }
+    @{ Name = "updates";  Args = @("--page", "Apps");     Wait = 24000; Invoke = "Check for updates"; InvokeWait = 20000 }
     @{ Name = "projects"; Args = @("--page", "Artifacts", "--scan"); Wait = 14000 }
     @{ Name = "optimize"; Args = @("--page", "Optimize"); Wait = 4000; Click = @{ X = 640; Y = 594 }; ClickWait = 2500 }
     @{ Name = "analyze";  Args = @("--page", "Analyze");  Wait = 5000; Click = @{ X = 539; Y = 613 }; ClickWait = 30000 }
@@ -96,6 +97,30 @@ function Focus-Window([IntPtr]$handle) {
     if ($foregroundThread -ne $ownThread) {
         [void][WinSweepCapture]::AttachThreadInput($foregroundThread, $ownThread, $false)
     }
+}
+
+# Presses a control by its accessible name. Unlike a fixed click point this keeps working
+# when the layout moves, and it proves the button itself is wired up.
+function Invoke-ByName([IntPtr]$handle, [string]$name) {
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+    $byName = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, $name)
+
+    $button = $null
+    foreach ($match in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $byName)) {
+        if ($match.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button) {
+            $button = $match
+            break
+        }
+    }
+
+    if (-not $button) {
+        throw "No button named '$name' was found."
+    }
+
+    $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
 }
 
 # A captured frame with almost no colour variation is a failed render, not a page.
@@ -188,6 +213,11 @@ foreach ($page in $pages) {
         Start-Sleep -Milliseconds 60
         [WinSweepCapture]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
         Start-Sleep -Milliseconds $page.ClickWait
+    }
+
+    if ($page.Invoke) {
+        Invoke-ByName $handle $page.Invoke
+        Start-Sleep -Milliseconds $page.InvokeWait
     }
 
     $path = Join-Path $OutDir "$($page.Name).png"

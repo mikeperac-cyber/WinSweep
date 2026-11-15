@@ -33,15 +33,21 @@ public sealed partial class AppsPage : Page
 
     private async void Update_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string id } && _viewModel.Updates.FirstOrDefault(u => u.Id == id) is { } update)
+        if (sender is Button { Tag: string id } &&
+            _viewModel.Updates.FirstOrDefault(u => u.Id == id) is { } row)
         {
-            await _viewModel.UpdateAsync(update);
+            await _viewModel.UpdateAsync(row);
         }
     }
 
     private async void UpdateAll_Click(object sender, RoutedEventArgs e)
     {
         await _viewModel.UpdateAllAsync();
+    }
+
+    private void CancelUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.CancelUpdates();
     }
 
     private async void StoreUpdates_Click(object sender, RoutedEventArgs e)

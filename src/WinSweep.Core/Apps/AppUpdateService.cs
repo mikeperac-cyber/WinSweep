@@ -29,15 +29,52 @@ public sealed partial class AppUpdateService
             TimeSpan.FromMinutes(2),
             cancellationToken);
 
-        // winget exits non-zero when there is nothing to update, so the table decides.
         var updates = ParseUpgradeTable(result.Output);
-        if (updates.Count == 0 && result.Outcome == MaintenanceOutcome.Failed && string.IsNullOrWhiteSpace(result.Output))
+        if (updates.Count > 0)
         {
-            return (updates, "winget (App Installer) is not available on this PC.");
+            return (updates, null);
         }
 
-        return (updates, null);
+        return (updates, InterpretEmptyResult(result));
     }
+
+    /// <summary>
+    /// Explains what an empty upgrade table means, or null when the machine really is up
+    /// to date. winget exits non-zero when there is nothing to update, so the exit code
+    /// alone cannot tell "all current" from "the check failed". Reporting an unreadable
+    /// result as success would tell the user they are fully patched when the check never
+    /// worked, so anything this cannot classify is surfaced as an error.
+    /// </summary>
+    public static string? InterpretEmptyResult(MaintenanceResult result)
+    {
+        // Exit code 0 with no rows: everything winget knows about is current.
+        if (result.Outcome == MaintenanceOutcome.Applied)
+        {
+            return null;
+        }
+
+        // The process ran but printed no table. winget signals "nothing to update" with a
+        // non-zero exit and no output, so only text here means the check itself failed.
+        if (result.ExitCode is not null)
+        {
+            var detail = FirstMeaningfulLine(result.Output);
+            return detail.Length == 0
+                ? null
+                : $"winget could not list app updates: {detail}";
+        }
+
+        // No exit code means the process never started, so name the real problem.
+        var reason = FirstMeaningfulLine(result.Message);
+        return reason.Length == 0
+            ? "winget (App Installer) is not available on this PC."
+            : $"winget could not be run: {reason}";
+    }
+
+    /// <summary>The first non-empty line of a tool's own output, trimmed for display.</summary>
+    private static string FirstMeaningfulLine(string text) =>
+        text.Split('\n')
+            .Select(l => l.Trim('\r', ' ', '\t'))
+            .FirstOrDefault(l => l.Length > 0) ?? string.Empty;
 
     /// <summary>Installs the newer version of one app and records it in the history.</summary>
     public async Task<MaintenanceResult> UpdateAsync(AppUpdate update, string runId, CancellationToken cancellationToken = default)

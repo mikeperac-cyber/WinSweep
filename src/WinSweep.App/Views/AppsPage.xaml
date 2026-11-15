@@ -20,13 +20,14 @@
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Spacing="3">
                 <TextBlock Text="Apps" FontSize="28" FontWeight="SemiBold" />
-                <TextBlock Text="{Binding StatusText}" Opacity="0.66" />
+                <TextBlock Text="{Binding StatusText}" Opacity="0.66" AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <ProgressRing IsActive="{Binding IsBusy}" Width="20" Height="20" VerticalAlignment="Center" AutomationProperties.Name="Working" />
-                <Button Content="Check for updates" Click="CheckUpdates_Click" />
-                <Button Content="Open Store updates" Click="StoreUpdates_Click" ToolTipService.ToolTip="Microsoft Store apps are updated by the Store itself." />
-                <Button Content="Refresh list" Click="Reload_Click" />
+                <Button Content="Cancel" Click="CancelUpdates_Click" Visibility="{Binding CanCancel, Converter={StaticResource BoolToVisibilityConverter}}" ToolTipService.ToolTip="Stop the check or update that is running." />
+                <Button Content="Check for updates" Click="CheckUpdates_Click" IsEnabled="{Binding IsIdle}" />
+                <Button Content="Open Store updates" Click="StoreUpdates_Click" IsEnabled="{Binding IsIdle}" ToolTipService.ToolTip="Microsoft Store apps are updated by the Store itself." />
+                <Button Content="Refresh list" Click="Reload_Click" IsEnabled="{Binding IsIdle}" />
             </StackPanel>
         </Grid>
 
@@ -39,6 +40,13 @@
             <TextBlock Grid.Column="1" Text="Select an app to review its uninstaller and leftover data." Opacity="0.55" VerticalAlignment="Center" />
         </Grid>
 
+        <TextBlock
+            Grid.Row="2"
+            Text="Every app that winget knows about is up to date."
+            Opacity="0.65"
+            VerticalAlignment="Center"
+            Visibility="{Binding ShowNoUpdates, Converter={StaticResource BoolToVisibilityConverter}}" />
+
         <Border
             Grid.Row="2"
             Background="{StaticResource CardBrush}"
@@ -48,9 +56,15 @@
             Padding="16,12"
             Visibility="{Binding HasUpdates, Converter={StaticResource BoolToVisibilityConverter}}">
             <StackPanel Spacing="6">
-                <Grid>
-                    <TextBlock Text="Updates available" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <Button Content="Update all" Click="UpdateAll_Click" HorizontalAlignment="Right" />
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding UpdatesHeaderText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding LastCheckedText}" Opacity="0.6" FontSize="12" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="Update all" Click="UpdateAll_Click" IsEnabled="{Binding CanUpdateAll}" HorizontalAlignment="Right" />
                 </Grid>
                 <ListView ItemsSource="{Binding Updates}" SelectionMode="None" MaxHeight="180">
                     <ListView.ItemTemplate>
@@ -58,6 +72,7 @@
                             <Grid Padding="2,4" ColumnSpacing="16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
@@ -70,7 +85,19 @@
                                     <TextBlock Text="&#x2192;" Opacity="0.5" />
                                     <TextBlock Text="{Binding Available}" FontWeight="SemiBold" />
                                 </StackPanel>
-                                <Button Grid.Column="2" Content="Update" Tag="{Binding Id}" Click="Update_Click" VerticalAlignment="Center" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Text="{Binding StateText}"
+                                    Opacity="0.75"
+                                    FontSize="11"
+                                    MaxWidth="240"
+                                    TextWrapping="Wrap"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding HasStateText, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <ProgressRing IsActive="{Binding IsRunning}" Width="16" Height="16" AutomationProperties.Name="Updating" />
+                                    <Button Content="Update" Tag="{Binding Id}" Click="Update_Click" IsEnabled="{Binding CanUpdate}" VerticalAlignment="Center" />
+                                </StackPanel>
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>
