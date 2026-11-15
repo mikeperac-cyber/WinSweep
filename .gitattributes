@@ -1,0 +1,14 @@
+# Treat source and docs as text with LF endings, so a stray control byte can never
+# hide a file from review again and checkouts are identical on every platform.
+*.cs       text eol=lf diff
+*.xaml     text eol=lf diff
+*.ps1      text eol=lf diff
+*.md       text eol=lf diff
+*.csproj   text eol=lf diff
+*.sln      text eol=lf
+*.json     text eol=lf
+*.manifest text eol=lf
+
+# Keep the repository's own config files stable too.
+.gitattributes text eol=lf
+.gitignore     text eol=lf
