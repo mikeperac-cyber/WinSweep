@@ -228,10 +228,33 @@ if ($SkipInstall) {
 
 Write-Host "Installing the package..." -ForegroundColor Cyan
 
-# ForceUpdateFromAnyVersion upgrades in place, so a failed install leaves the previously
-# installed build intact instead of removing it first. The legacy identity (if any) is
-# removed separately because it is a different package name.
+# The legacy identity is a different package name, so it is removed first.
 Get-AppxPackage -Name "WinSweep.Dev" -ErrorAction SilentlyContinue |
     Remove-AppxPackage -ErrorAction SilentlyContinue
-Add-AppxPackage -Path $signedPackagePath -ForceUpdateFromAnyVersion -ForceApplicationShutdown
+
+# Try an in-place upgrade first: if it works, a failure elsewhere cannot leave the machine
+# with no app installed. Windows blocks installing the same version with different content
+# (0x80073CFB), which happens on every rebuild until the manifest version is bumped, so
+# that one result falls back to removing the old build and installing the new one.
+try {
+    Add-AppxPackage -Path $signedPackagePath -ForceUpdateFromAnyVersion -ForceApplicationShutdown
+    Write-Host "Installed. Look for WinSweep in the Start menu." -ForegroundColor Green
+    return
+}
+catch {
+    $sameIdentity = $_.Exception.Message -match '0x80073CFB|already installed'
+    if (-not $sameIdentity) {
+        throw
+    }
+
+    Write-Host "The installed build has the same version but different files; replacing it..." -ForegroundColor Yellow
+}
+
+# Keep the user's settings and history: they live in %LOCALAPPDATA%\WinSweep, outside the
+# package container, so removing the package does not touch them.
+foreach ($existing in Get-AppxPackage -Name "MikePerac.WinSweep" -ErrorAction SilentlyContinue) {
+    Remove-AppxPackage -Package $existing.PackageFullName -ErrorAction Stop
+}
+
+Add-AppxPackage -Path $signedPackagePath -ForceApplicationShutdown
 Write-Host "Installed. Look for WinSweep in the Start menu." -ForegroundColor Green
